@@ -4,6 +4,7 @@ import 'package:barcode_image/barcode_image.dart' as bc;
 import 'package:google_mlkit_barcode_scanning/google_mlkit_barcode_scanning.dart';
 import 'package:image/image.dart' as img;
 
+import 'code128_decoder.dart';
 import 'image_pipeline.dart';
 
 /// Barcode yang terdeteksi pada sebuah gambar.
@@ -70,6 +71,28 @@ class BarcodeService {
       if (b.box.area > best.box.area) best = b;
     }
     return best;
+  }
+
+  /// Coba baca nilai Code128 langsung dari piksel pada [det.box].
+  ///
+  /// Dipakai bila [det] punya kotak tapi [DetectedBarcode.rawValue]-nya null
+  /// (ML Kit gagal decode). Mengembalikan deteksi baru dengan rawValue dan
+  /// format terisi, atau null bila decode gagal.
+  Future<DetectedBarcode?> decodeValue(String imagePath, DetectedBarcode det) async {
+    if (det.rawValue != null) return det;
+    try {
+      final bytes = await File(imagePath).readAsBytes();
+      final image = ImagePipeline.decode(bytes);
+      final value = Code128Decoder.decode(image, det.box);
+      if (value == null) return null;
+      return DetectedBarcode(
+        box: det.box,
+        rawValue: value,
+        format: BarcodeFormat.code128,
+      );
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Petakan format ML Kit ke generator package:barcode.

@@ -32,11 +32,15 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen>
+    with SingleTickerProviderStateMixin {
   final _pdf = PdfService();
   final _barcodes = BarcodeService();
   final _bt = BluetoothPrinterService();
   StreamSubscription<List<SharedMediaFile>>? _intentSub;
+
+  /// Tab "Cetak" (0) vs "Pengaturan" (1).
+  late final TabController _tabController;
 
   PaperSize _paper = PaperSize.mm58;
   PrintMode _mode = PrintMode.asli;
@@ -96,6 +100,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 2, vsync: this);
     // PDF yang di-share dari aplikasi lain saat aplikasi sudah jalan.
     _intentSub = ReceiveSharingIntent.instance.getMediaStream().listen(
       _handleSharedFiles,
@@ -111,6 +116,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    _tabController.dispose();
     _intentSub?.cancel();
     _discoverySub?.cancel();
     _scanTimer?.cancel();
@@ -268,6 +274,8 @@ class _HomeScreenState extends State<HomeScreen> {
           );
         }
       });
+      // PDF masuk -> langsung ke tab Cetak.
+      _tabController.animateTo(0);
       if (_mode == PrintMode.barcodeDiperbesar) {
         await _detectBarcodes(); // diakhiri _refreshPrintPreview()
       } else {
@@ -348,7 +356,13 @@ class _HomeScreenState extends State<HomeScreen> {
           found = [];
         }
         if (!mounted) return;
-        setState(() => _detections[i] = _barcodes.largest(found));
+        var best = _barcodes.largest(found);
+        // Kotak ketemu tapi nilai tak terbaca ML Kit -> coba decode manual.
+        if (best != null && best.rawValue == null) {
+          best = await _barcodes.decodeValue(_pages[i].path, best) ?? best;
+        }
+        if (!mounted) return;
+        setState(() => _detections[i] = best);
       }
     } finally {
       if (mounted) setState(() => _detecting = false);
@@ -584,47 +598,83 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Printer Bar')),
-      body: SingleChildScrollView(
-        physics: _cropDragging
-            ? const NeverScrollableScrollPhysics()
-            : null,
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _paperCard(),
-            const SizedBox(height: 12),
-            _pdfCard(),
-            if (_pages.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              _previewCard(),
-              const SizedBox(height: 12),
-              _printPreviewCard(),
-            ],
-            const SizedBox(height: 12),
-            _modeCard(),
-            const SizedBox(height: 12),
-            _bluetoothCard(),
-            const SizedBox(height: 16),
-            _printButton(),
-            if (_progress != null) ...[
-              const SizedBox(height: 12),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                  const SizedBox(width: 10),
-                  Text(_progress!),
-                ],
-              ),
-            ],
-            const SizedBox(height: 24),
+      body: TabBarView(
+        controller: _tabController,
+        children: [
+          _printTab(),
+          _settingsTab(),
+        ],
+      ),
+      bottomNavigationBar: Material(
+        color: Theme.of(context).colorScheme.surface,
+        child: TabBar(
+          controller: _tabController,
+          labelColor: Theme.of(context).colorScheme.primary,
+          unselectedLabelColor:
+              Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+          indicatorColor: Theme.of(context).colorScheme.primary,
+          tabs: const [
+            Tab(icon: Icon(Icons.print), text: 'Cetak'),
+            Tab(icon: Icon(Icons.settings), text: 'Pengaturan'),
           ],
         ),
+      ),
+    );
+  }
+
+  /// Tab "Cetak": pilih PDF -> atur crop -> pratinjau -> cetak.
+  Widget _printTab() {
+    return SingleChildScrollView(
+      physics:
+          _cropDragging ? const NeverScrollableScrollPhysics() : null,
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _pdfCard(),
+          if (_pages.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            _previewCard(),
+            const SizedBox(height: 12),
+            _printPreviewCard(),
+          ],
+          const SizedBox(height: 16),
+          _printButton(),
+          if (_progress != null) ...[
+            const SizedBox(height: 12),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+                const SizedBox(width: 10),
+                Text(_progress!),
+              ],
+            ),
+          ],
+          const SizedBox(height: 24),
+        ],
+      ),
+    );
+  }
+
+  /// Tab "Pengaturan": kertas, mode cetak, dan koneksi printer.
+  Widget _settingsTab() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _paperCard(),
+          const SizedBox(height: 12),
+          _modeCard(),
+          const SizedBox(height: 12),
+          _bluetoothCard(),
+          const SizedBox(height: 24),
+        ],
       ),
     );
   }
