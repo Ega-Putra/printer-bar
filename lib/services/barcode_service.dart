@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:google_mlkit_barcode_scanning/google_mlkit_barcode_scanning.dart';
 
 import 'image_pipeline.dart';
@@ -22,17 +24,36 @@ class BarcodeService {
   /// Mengembalikan daftar kosong bila tidak ada barcode yang ditemukan
   /// (bukan error — pemanggil yang memutuskan pesannya).
   Future<List<DetectedBarcode>> detect(String imagePath) async {
-    final input = InputImage.fromFilePath(imagePath);
-    final barcodes = await _scanner.processImage(input);
-    final out = <DetectedBarcode>[];
-    for (final b in barcodes) {
-      final rect = b.boundingBox;
-      out.add(DetectedBarcode(
-        box: Box(rect.left, rect.top, rect.right, rect.bottom),
-        rawValue: b.rawValue,
-      ));
+    // 1. Coba ML Kit dulu (akurat + bisa decode nilai).
+    try {
+      final input = InputImage.fromFilePath(imagePath);
+      final barcodes = await _scanner.processImage(input);
+      if (barcodes.isNotEmpty) {
+        return barcodes.map((b) {
+          final rect = b.boundingBox;
+          return DetectedBarcode(
+            box: Box(rect.left, rect.top, rect.right, rect.bottom),
+            rawValue: b.rawValue,
+          );
+        }).toList();
+      }
+    } catch (_) {
+      // Jatuh ke fallback heuristik di bawah.
     }
-    return out;
+    // 2. Fallback murni-Dart: cari area garis vertikal rapat khas
+    //    barcode 1D. Tanpa butuh model ML — jalan di semua HP.
+    //    Untuk fitur "diperbesar" yang penting hanya kotaknya.
+    try {
+      final bytes = await File(imagePath).readAsBytes();
+      final region =
+          ImagePipeline.findBarcodeRegion(ImagePipeline.decode(bytes));
+      if (region != null) {
+        return [DetectedBarcode(box: region)];
+      }
+    } catch (_) {
+      // Abaikan — kembalikan daftar kosong seperti semula.
+    }
+    return [];
   }
 
   /// Barcode dengan area terbesar (yang paling layak diperbesar).

@@ -18,6 +18,11 @@ class CropEditor extends StatefulWidget {
   final Box box;
   final ValueChanged<Box> onBoxChanged;
 
+  /// Dipanggil true saat drag crop dimulai, false saat selesai.
+  /// Induk memakai ini untuk mengunci scroll halaman selama drag,
+  /// supaya halaman tidak ikut terscroll saat box digerakkan.
+  final ValueChanged<bool>? onDragging;
+
   const CropEditor({
     super.key,
     required this.imageBytes,
@@ -25,6 +30,7 @@ class CropEditor extends StatefulWidget {
     required this.imageHeight,
     required this.box,
     required this.onBoxChanged,
+    this.onDragging,
   });
 
   @override
@@ -110,13 +116,14 @@ class _CropEditorState extends State<CropEditor> {
     );
   }
 
-  void _onPanStart(DragStartDetails d) {
-    final p = d.localPosition;
+  void _onPointerDown(PointerDownEvent e) {
+    final p = e.localPosition;
     final corners = _cornersDisplay();
     for (var i = 0; i < 4; i++) {
       if ((p - corners[i]).distance <= _hitRadius) {
         _mode = _DragMode.values[_DragMode.corner0.index + i];
         _grabOffset = corners[i] - p;
+        widget.onDragging?.call(true);
         return;
       }
     }
@@ -137,10 +144,12 @@ class _CropEditorState extends State<CropEditor> {
           _drawAnchor.dx, _drawAnchor.dy, _drawAnchor.dx, _drawAnchor.dy);
       _notify();
     }
+    widget.onDragging?.call(true);
   }
 
-  void _onPanUpdate(DragUpdateDetails d) {
-    final p = d.localPosition;
+  void _onPointerMove(PointerMoveEvent e) {
+    if (_mode == _DragMode.none) return;
+    final p = e.localPosition;
     switch (_mode) {
       case _DragMode.none:
         return;
@@ -165,6 +174,21 @@ class _CropEditorState extends State<CropEditor> {
     _notify();
   }
 
+  void _onPointerEnd(PointerEvent _) {
+    if (_mode != _DragMode.none) {
+      _mode = _DragMode.none;
+      widget.onDragging?.call(false);
+    }
+  }
+
+  @override
+  void dispose() {
+    // Pengaman: jangan biarkan scroll induk terkunci bila widget
+    // dilepas di tengah drag.
+    if (_mode != _DragMode.none) widget.onDragging?.call(false);
+    super.dispose();
+  }
+
   void _notify() {
     setState(() {});
     widget.onBoxChanged(_live);
@@ -186,12 +210,16 @@ class _CropEditorState extends State<CropEditor> {
         final displayBox =
             Rect.fromPoints(c[0], c[2]);
 
-        return GestureDetector(
+        // Listener (bukan GestureDetector): event pointer mentah tidak
+        // berkompetisi di gesture arena dengan SingleChildScrollView
+        // induk, jadi drag crop selalu responsif. Scroll induk dikunci
+        // via onDragging selama jari menyentuh area ini.
+        return Listener(
           behavior: HitTestBehavior.opaque,
-          onPanStart: _onPanStart,
-          onPanUpdate: _onPanUpdate,
-          onPanEnd: (_) => _mode = _DragMode.none,
-          onPanCancel: () => _mode = _DragMode.none,
+          onPointerDown: _onPointerDown,
+          onPointerMove: _onPointerMove,
+          onPointerUp: _onPointerEnd,
+          onPointerCancel: _onPointerEnd,
           child: Stack(
             children: [
               Positioned(

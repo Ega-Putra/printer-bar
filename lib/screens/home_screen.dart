@@ -49,6 +49,10 @@ class _HomeScreenState extends State<HomeScreen> {
   int _previewIndex = 0;
   bool _loadingPdf = false;
 
+  /// true saat jari sedang drag di editor crop → scroll halaman dikunci
+  /// supaya halaman tidak ikut terscroll saat box digerakkan.
+  bool _cropDragging = false;
+
   /// Area crop per indeks halaman (koordinat piksel gambar render).
   /// Default = seluruh halaman.
   final Map<int, Box> _crops = {};
@@ -517,6 +521,9 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('Printer Bar')),
       body: SingleChildScrollView(
+        physics: _cropDragging
+            ? const NeverScrollableScrollPhysics()
+            : null,
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -660,6 +667,11 @@ class _HomeScreenState extends State<HomeScreen> {
                 box: crop,
                 onBoxChanged: (b) =>
                     setState(() => _crops[_previewIndex] = b),
+                onDragging: (dragging) {
+                  if (mounted && dragging != _cropDragging) {
+                    setState(() => _cropDragging = dragging);
+                  }
+                },
               ),
             ),
             const SizedBox(height: 8),

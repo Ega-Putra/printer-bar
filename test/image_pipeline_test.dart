@@ -148,4 +148,78 @@ void main() {
     expect(out.getPixel(1, 1).g, 255);
     expect(out.getPixel(1, 1).r, 0);
   });
+
+  group('findBarcodeRegion', () {
+    /// Barcode sintetis ala Code128: x 100..300, y 200..350,
+    /// bilah vertikal selebar 2-5 px selang-seling.
+    img.Image syntheticBarcode() {
+      final im = img.Image(width: 768, height: 1000);
+      img.fill(im, color: img.ColorRgb8(255, 255, 255));
+      var x = 100;
+      var black = true;
+      var seed = 7;
+      while (x < 300) {
+        seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+        final wBar = 2 + (seed % 4); // 2..5 px
+        for (var dx = 0; dx < wBar && x + dx < 300; dx++) {
+          for (var y = 200; y < 350; y++) {
+            im.setPixel(
+              x + dx,
+              y,
+              black
+                  ? img.ColorRgb8(0, 0, 0)
+                  : img.ColorRgb8(255, 255, 255),
+            );
+          }
+        }
+        x += wBar;
+        black = !black;
+      }
+      return im;
+    }
+
+    test('barcode sintetis terdeteksi di area yang benar', () {
+      final box = ImagePipeline.findBarcodeRegion(syntheticBarcode());
+      expect(box, isNotNull);
+      // Toleransi: padding 6px + sampling baris.
+      expect(box!.left, inInclusiveRange(85.0, 105.0));
+      expect(box.top, inInclusiveRange(185.0, 205.0));
+      expect(box.right, inInclusiveRange(295.0, 315.0));
+      expect(box.bottom, inInclusiveRange(345.0, 365.0));
+    });
+
+    test('gambar putih polos -> null', () {
+      final white = img.Image(width: 768, height: 1000);
+      img.fill(white, color: img.ColorRgb8(255, 255, 255));
+      expect(ImagePipeline.findBarcodeRegion(white), isNull);
+    });
+
+    test('garis-garis teks horizontal -> null (bukan barcode)', () {
+      final im = img.Image(width: 768, height: 1000);
+      img.fill(im, color: img.ColorRgb8(255, 255, 255));
+      // Simulasi baris teks: balok hitam 600px x 12px tiap 40px.
+      for (var y = 100; y < 900; y += 40) {
+        for (var x = 80; x < 680; x++) {
+          for (var dy = 0; dy < 12; dy++) {
+            im.setPixel(x, y + dy, img.ColorRgb8(0, 0, 0));
+          }
+        }
+      }
+      expect(ImagePipeline.findBarcodeRegion(im), isNull);
+    });
+
+    test('barcode + teks: tetap barcode yang terpilih', () {
+      final im = syntheticBarcode();
+      for (var y = 500; y < 900; y += 40) {
+        for (var x = 80; x < 680; x++) {
+          for (var dy = 0; dy < 12; dy++) {
+            im.setPixel(x, y + dy, img.ColorRgb8(0, 0, 0));
+          }
+        }
+      }
+      final box = ImagePipeline.findBarcodeRegion(im);
+      expect(box, isNotNull);
+      expect(box!.top, lessThan(400.0));
+    });
+  });
 }

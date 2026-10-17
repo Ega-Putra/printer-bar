@@ -150,4 +150,106 @@ class ImagePipeline {
     }
     return decoded;
   }
+
+  /// Cari area barcode 1D (garis vertikal rapat) secara heuristik.
+  ///
+  /// Fallback murni-Dart bila pemindai ML Kit tidak menemukan apa-apa
+  /// (mis. modelnya belum terunduh di HP). Untuk fitur "barcode
+  /// diperbesar" yang dibutuhkan hanya KOTAK area-nya, bukan nilai
+  /// decode-nya — jadi heuristik ini cukup.
+  ///
+  /// Cara kerja: tiap baris dihitung jumlah transisi hitam↔putih.
+  /// Baris barcode punya transisi SANGAT banyak dalam rentang x yang
+  /// sempit, dan berlanjut puluhan piksel secara vertikal (teks tidak
+  /// seperti ini: baris teks pendek dan transisinya tersebar lebar).
+  /// Mengembalikan null bila tidak ada kandidat yang meyakinkan.
+  static Box? findBarcodeRegion(img.Image src) {
+    final gray = img.grayscale(src);
+    final w = src.width;
+    final h = src.height;
+    if (w < 80 || h < 80) return null;
+
+    const rowStep = 2; // sampling tiap 2 baris: cukup & cepat
+    const minTransitions = 24; // transisi minimum per baris
+    const minBandHeight = 36; // tinggi minimum pita (px)
+    const minSpanWidth = 60; // lebar minimum rentang (px)
+    const minDensity = 0.12; // transisi per px lebar rentang
+
+    // Statistik per baris sampel: (transisi, x-min, x-max transisi).
+    final rowCount = (h + rowStep - 1) ~/ rowStep;
+    final rowTrans = List<int>.filled(rowCount, 0);
+    final rowMinX = List<int>.filled(rowCount, w);
+    final rowMaxX = List<int>.filled(rowCount, -1);
+    for (var i = 0; i < rowCount; i++) {
+      final y = i * rowStep;
+      var prev = gray.getPixel(0, y).r < 128 ? 1 : 0;
+      var t = 0;
+      var minX = w;
+      var maxX = -1;
+      for (var x = 1; x < w; x++) {
+        final v = gray.getPixel(x, y).r < 128 ? 1 : 0;
+        if (v != prev) {
+          t++;
+          if (x < minX) minX = x;
+          maxX = x;
+          prev = v;
+        }
+      }
+      rowTrans[i] = t;
+      rowMinX[i] = minX;
+      rowMaxX[i] = maxX;
+    }
+
+    // Pita vertikal TERPANJANG dari baris-baris padat.
+    var bestStart = -1;
+    var bestLen = 0;
+    var curStart = -1;
+    for (var i = 0; i <= rowCount; i++) {
+      final dense = i < rowCount && rowTrans[i] >= minTransitions;
+      if (dense && curStart < 0) {
+        curStart = i;
+      } else if (!dense && curStart >= 0) {
+        final len = i - curStart;
+        if (len > bestLen) {
+          bestLen = len;
+          bestStart = curStart;
+        }
+        curStart = -1;
+      }
+    }
+    if (bestStart < 0) return null;
+
+    final y0 = bestStart * rowStep;
+    final y1 = ((bestStart + bestLen) * rowStep).clamp(0, h);
+    if (y1 - y0 < minBandHeight) return null;
+
+    // Rentang x gabungan dari semua transisi di pita itu.
+    var spanL = w;
+    var spanR = -1;
+    var totalT = 0;
+    var rows = 0;
+    for (var i = bestStart; i < bestStart + bestLen; i++) {
+      if (rowMinX[i] <= rowMaxX[i]) {
+        if (rowMinX[i] < spanL) spanL = rowMinX[i];
+        if (rowMaxX[i] > spanR) spanR = rowMaxX[i];
+        totalT += rowTrans[i];
+        rows++;
+      }
+    }
+    if (rows == 0 || spanR <= spanL) return null;
+    final spanW = spanR - spanL;
+    if (spanW < minSpanWidth) return null;
+
+    // Kepadatan: barcode = transisi rapat dalam rentang sempit.
+    final density = (totalT / rows) / spanW;
+    if (density < minDensity) return null;
+
+    const pad = 6.0;
+    return Box(
+      (spanL - pad).clamp(0.0, w.toDouble()),
+      (y0 - pad).clamp(0.0, h.toDouble()),
+      (spanR + pad).clamp(0.0, w.toDouble()),
+      (y1 + pad).clamp(0.0, h.toDouble()),
+    );
+  }
 }
