@@ -63,6 +63,10 @@ class _HomeScreenState extends State<HomeScreen> {
   PrinterDevice? _connected;
   bool _connectingMac = false;
 
+  /// Subscription hasil discovery + timer timeout pengaman.
+  StreamSubscription<PrinterDevice?>? _discoverySub;
+  Timer? _scanTimer;
+
   bool _printing = false;
   String? _progress;
 
@@ -85,6 +89,9 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void dispose() {
     _intentSub?.cancel();
+    _discoverySub?.cancel();
+    _scanTimer?.cancel();
+    _bt.cancelDiscovery();
     _barcodes.dispose();
     super.dispose();
   }
@@ -283,9 +290,18 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // ---------- Bluetooth ----------
 
+  /// Pindai perangkat Bluetooth yang AKTIF terdeteksi di sekitar
+  /// (discovery klasik) — bukan daftar riwayat pairing. Tap lagi untuk
+  /// berhenti; berhenti otomatis setelah 15 detik.
   Future<void> _scanDevices() async {
-    if (_scanning) return;
-    setState(() => _scanning = true);
+    if (_scanning) {
+      await _stopScan();
+      return;
+    }
+    setState(() {
+      _scanning = true;
+      _devices = [];
+    });
     try {
       await _bt.ensurePermissions();
       final on = await _bt.bluetoothOn;
@@ -293,17 +309,60 @@ class _HomeScreenState extends State<HomeScreen> {
         throw Exception(
             'Bluetooth HP mati. Nyalakan Bluetooth dulu, lalu pindai lagi.');
       }
-      final devices = await _bt.pairedDevices();
-      if (!mounted) return;
-      setState(() => _devices = devices);
-      if (devices.isEmpty) {
-        _snack('Tidak ada perangkat ter-pairing. Pairing printer dulu di '
-            'Pengaturan > Bluetooth HP.');
+      await _discoverySub?.cancel();
+      _discoverySub = _bt.discoveryStream().listen(
+        (device) {
+          if (!mounted) return;
+          if (device == null) {
+            // Discovery selesai (timeout sistem ±12 detik).
+            _finishScan();
+            return;
+          }
+          setState(() {
+            _devices = BluetoothPrinterService.dedupe([..._devices, device]);
+          });
+        },
+        onError: (Object e) {
+          _snack('Gagal memindai: ${_errMsg(e)}', error: true);
+          _finishScan();
+        },
+      );
+      final started = await _bt.startDiscovery();
+      if (!started) {
+        throw Exception(
+            'Gagal memulai pemindaian Bluetooth. Pastikan Bluetooth menyala.');
       }
+      // Timeout pengaman bila event "finished" tak kunjung datang.
+      _scanTimer?.cancel();
+      _scanTimer = Timer(const Duration(seconds: 15), () {
+        if (mounted && _scanning) _finishScan(showEmptyHint: true);
+      });
     } catch (e) {
       _snack(_errMsg(e), error: true);
-    } finally {
-      if (mounted) setState(() => _scanning = false);
+      _finishScan();
+    }
+  }
+
+  Future<void> _stopScan() async {
+    _scanTimer?.cancel();
+    _scanTimer = null;
+    await _discoverySub?.cancel();
+    _discoverySub = null;
+    await _bt.cancelDiscovery();
+    if (mounted) setState(() => _scanning = false);
+  }
+
+  void _finishScan({bool showEmptyHint = false}) {
+    _scanTimer?.cancel();
+    _scanTimer = null;
+    _discoverySub?.cancel();
+    _discoverySub = null;
+    _bt.cancelDiscovery();
+    if (!mounted) return;
+    setState(() => _scanning = false);
+    if (_devices.isEmpty && showEmptyHint) {
+      _snack('Tidak ada perangkat terdeteksi. Pastikan printer menyala '
+          'dan berada di dekat HP.');
     }
   }
 
@@ -682,24 +741,26 @@ class _HomeScreenState extends State<HomeScreen> {
             if (_mode == PrintMode.barcodeDiperbesar)
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                child: Row(
+                // Wrap (bukan Row) agar tak pernah overflow di layar sempit.
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
-                    const Text('Orientasi barcode: '),
-                    const SizedBox(width: 8),
-                    SegmentedButton<bool>(
-                      segments: const [
-                        ButtonSegment(
-                            value: false,
-                            label: Text('Horizontal'),
-                            icon: Icon(Icons.more_horiz)),
-                        ButtonSegment(
-                            value: true,
-                            label: Text('Vertikal'),
-                            icon: Icon(Icons.more_vert)),
-                      ],
-                      selected: {_barcodeVertical},
-                      onSelectionChanged: (s) =>
-                          setState(() => _barcodeVertical = s.first),
+                    const Text('Orientasi barcode:'),
+                    ChoiceChip(
+                      label: const Text('Horizontal'),
+                      avatar: const Icon(Icons.more_horiz, size: 18),
+                      selected: !_barcodeVertical,
+                      onSelected: (_) =>
+                          setState(() => _barcodeVertical = false),
+                    ),
+                    ChoiceChip(
+                      label: const Text('Vertikal'),
+                      avatar: const Icon(Icons.more_vert, size: 18),
+                      selected: _barcodeVertical,
+                      onSelected: (_) =>
+                          setState(() => _barcodeVertical = true),
                     ),
                   ],
                 ),
@@ -733,15 +794,28 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(height: 4),
             Text(
-              'Pairing printer dulu di Pengaturan > Bluetooth HP, lalu pindai di sini.',
+              'Nyalakan printer dan pastikan dalam jangkauan, lalu pindai. '
+              'Hanya perangkat yang aktif terdeteksi yang ditampilkan.',
               style: Theme.of(context).textTheme.bodySmall,
             ),
             const SizedBox(height: 8),
             OutlinedButton.icon(
-              onPressed: _scanning ? null : _scanDevices,
+              onPressed: _scanDevices,
               icon: const Icon(Icons.bluetooth_searching),
-              label: Text(_scanning ? 'Memindai...' : 'Pindai Perangkat'),
+              label: Text(_scanning
+                  ? 'Berhenti (${_devices.length})'
+                  : 'Pindai Perangkat'),
             ),
+            if (_scanning) ...[
+              const SizedBox(height: 8),
+              const LinearProgressIndicator(),
+              const SizedBox(height: 4),
+              Text(
+                'Memindai perangkat di sekitar... '
+                'tap "Berhenti" bila printer sudah muncul.',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ],
             if (_connected != null) ...[
               const SizedBox(height: 8),
               DeviceTile(

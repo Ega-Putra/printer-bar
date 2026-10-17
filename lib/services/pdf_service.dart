@@ -25,14 +25,41 @@ class RenderedPage {
 
 /// Memilih berkas PDF resi dan me-render tiap halamannya menjadi gambar PNG.
 class PdfService {
-  /// Buka pemilih berkas sistem, kembalikan path PDF atau null bila batal.
+  /// Buka pemilih berkas sistem, kembalikan path PDF yang BISA DIBACA,
+  /// atau null bila pengguna batal memilih.
+  ///
+  /// Melempar [Exception] berbahasa Indonesia bila berkas dipilih tapi
+  /// tidak bisa dibaca (mis. content URI yang path-nya null — penyebab
+  /// umum "preview tidak muncul tanpa error" di sebagian HP Android).
   Future<String?> pickPdf() async {
     final files = await FilePicker.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['pdf'],
     );
+    // Dibatalkan pengguna → list kosong (BUKAN error).
     if (files.isEmpty) return null;
-    return files.single.path;
+    final file = files.single;
+    // Jalur 1: path langsung yang bisa dibaca (umumnya dari File Manager).
+    final p = file.path;
+    if (p != null && File(p).existsSync()) return p;
+    // Jalur 2: URI non-file (mis. content://) yang path-nya null →
+    // baca bytes-nya lalu salin ke direktori cache.
+    try {
+      final bytes = await file.readAsBytes();
+      if (bytes.isNotEmpty) {
+        final tmp = await getTemporaryDirectory();
+        final out = File(
+            '${tmp.path}/resi_${DateTime.now().millisecondsSinceEpoch}.pdf');
+        await out.writeAsBytes(bytes, flush: true);
+        return out.path;
+      }
+    } catch (_) {
+      // Jatuh ke Exception di bawah dengan pesan yang jelas.
+    }
+    throw Exception(
+      'Berkas PDF tidak bisa dibaca dari penyimpanan HP. '
+      'Coba pilih lagi dari aplikasi File Manager.',
+    );
   }
 
   /// Render semua halaman [pdfPath] menjadi PNG selebar [renderWidth] piksel.
@@ -43,6 +70,9 @@ class PdfService {
     String pdfPath, {
     required int renderWidth,
   }) async {
+    if (!File(pdfPath).existsSync()) {
+      throw Exception('Berkas PDF tidak ditemukan di: $pdfPath');
+    }
     final document = await PdfDocument.openFile(pdfPath);
     try {
       final tmp = await getTemporaryDirectory();

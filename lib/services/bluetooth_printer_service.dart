@@ -1,8 +1,9 @@
 import 'package:device_info_plus/device_info_plus.dart';
+import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
 
-/// Perangkat printer yang sudah di-pairing.
+/// Perangkat yang terdeteksi via Bluetooth (aktif di sekitar HP).
 class PrinterDevice {
   final String name;
   final String mac;
@@ -12,11 +13,16 @@ class PrinterDevice {
 
 /// Layanan koneksi Bluetooth SPP ke printer thermal.
 ///
-/// Memakai package `print_bluetooth_thermal` (terawat, mendukung model izin
-/// Android 12+ tanpa meminta izin lokasi yang tak perlu). Sesuai kebijakan
-/// plugin, daftar perangkat = perangkat yang SUDAH di-pairing di Pengaturan
-/// Bluetooth HP — pengguna wajib pairing manual lebih dulu.
+/// Memakai package `print_bluetooth_thermal` untuk koneksi & tulis data,
+/// dan discovery Bluetooth klasik via MethodChannel native
+/// (lihat MainActivity.kt) agar daftar hanya berisi perangkat yang AKTIF
+/// terdeteksi di sekitar — bukan seluruh riwayat pairing HP.
 class BluetoothPrinterService {
+  static const _method =
+      MethodChannel('com.egaputra.thermal_print/bt_discovery');
+  static const _events =
+      EventChannel('com.egaputra.thermal_print/bt_discovery_events');
+
   /// Minta izin runtime yang dibutuhkan Bluetooth.
   ///
   /// Melempar [Exception] berbahasa Indonesia bila ada izin yang ditolak.
@@ -42,26 +48,59 @@ class BluetoothPrinterService {
 
   Future<bool> get bluetoothOn => PrintBluetoothThermal.bluetoothEnabled;
 
-  /// Daftar perangkat yang sudah di-pairing di HP.
-  Future<List<PrinterDevice>> pairedDevices() async {
-    final list = await PrintBluetoothThermal.pairedBluetooths;
+  /// Hilangkan duplikat berdasarkan MAC (discovery bisa melaporkan
+  /// perangkat yang sama berkali-kali). Murni-Dart, bisa di-unit-test.
+  static List<PrinterDevice> dedupe(List<PrinterDevice> devices) {
+    final seen = <String>{};
     return [
-      for (final d in list)
-        PrinterDevice(
-          name: d.name.isEmpty ? d.macAdress : d.name,
-          mac: d.macAdress,
-        ),
+      for (final d in devices)
+        if (seen.add(d.mac)) d,
     ];
   }
 
+  /// Stream perangkat yang ditemukan selama discovery aktif.
+  ///
+  /// Tiap event = satu perangkat (MAC bisa duplikat → pakai [dedupe]).
+  /// Event `null` = discovery selesai (timeout sistem).
+  Stream<PrinterDevice?> discoveryStream() {
+    return _events.receiveBroadcastStream().map((event) {
+      final m = Map<String, dynamic>.from(event as Map);
+      if (m['event'] == 'finished') return null;
+      final mac = (m['mac'] ?? '').toString();
+      if (mac.isEmpty) return null;
+      var name = (m['name'] ?? '').toString();
+      if (name.isEmpty) name = mac;
+      return PrinterDevice(name: name, mac: mac);
+    });
+  }
+
+  /// Mulai discovery Bluetooth klasik. True bila berhasil dimulai.
+  Future<bool> startDiscovery() async {
+    final ok = await _method.invokeMethod<bool>('startDiscovery');
+    return ok == true;
+  }
+
+  /// Hentikan discovery yang sedang berjalan.
+  Future<void> cancelDiscovery() async {
+    try {
+      await _method.invokeMethod<bool>('cancelDiscovery');
+    } catch (_) {
+      // Abaikan: channel mungkin belum siap (mis. saat dispose awal).
+    }
+  }
+
   /// Hubungkan ke [device] via SPP. Melempar [Exception] bila gagal.
+  ///
+  /// Untuk perangkat yang belum di-pairing, Android biasanya menampilkan
+  /// dialog pairing saat pertama kali terhubung — setujui di HP.
   Future<void> connect(PrinterDevice device) async {
     final ok =
         await PrintBluetoothThermal.connect(macPrinterAddress: device.mac);
     if (!ok) {
       throw Exception(
         'Gagal terhubung ke "${device.name}". Pastikan printer menyala, '
-        'berada di dekat HP, dan tidak dipakai aplikasi lain.',
+        'berada di dekat HP, dan tidak dipakai aplikasi lain. Jika diminta, '
+        'setujui pairing di HP.',
       );
     }
   }
