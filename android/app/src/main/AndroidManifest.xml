@@ -7,7 +7,7 @@
     <!-- Lokasi hanya dibutuhkan untuk discovery Bluetooth di Android 11 ke bawah. -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="30" />
     <application
-        android:label="Cetak Thermal"
+        android:label="Printer Bar"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

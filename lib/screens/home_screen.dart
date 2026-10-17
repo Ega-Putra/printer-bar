@@ -59,6 +59,10 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _detecting = false;
 
   List<PrinterDevice> _devices = [];
+
+  /// Perangkat yang sudah di-pairing ("tersimpan"), dimuat saat pemindaian
+  /// dimulai (butuh izin BLUETOOTH_CONNECT).
+  List<PrinterDevice> _bonded = [];
   bool _scanning = false;
   PrinterDevice? _connected;
   bool _connectingMac = false;
@@ -163,6 +167,21 @@ class _HomeScreenState extends State<HomeScreen> {
     String? path;
     try {
       path = await _pdf.pickPdf();
+    } on TimeoutException {
+      // Pemilih berkas menggantung (pernah terjadi di MIUI) — jangan
+      // biarkan UI stuck di status loading selamanya.
+      if (mounted) {
+        setState(() {
+          _loadingPdf = false;
+          _progress = null;
+        });
+        _snack(
+          'Pemilih berkas tidak merespons. Coba lagi, atau buka PDF '
+          'dari File Manager lalu Share > Printer Bar.',
+          error: true,
+        );
+      }
+      return;
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -290,9 +309,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // ---------- Bluetooth ----------
 
-  /// Pindai perangkat Bluetooth yang AKTIF terdeteksi di sekitar
-  /// (discovery klasik) — bukan daftar riwayat pairing. Tap lagi untuk
-  /// berhenti; berhenti otomatis setelah 15 detik.
+  /// Pindai perangkat Bluetooth ala pengaturan bawaan HP:
+  /// "Perangkat tersimpan" (sudah di-pairing) + "Perangkat tersedia"
+  /// (discovery aktif di sekitar). Tap lagi untuk berhenti; berhenti
+  /// otomatis setelah 15 detik.
   Future<void> _scanDevices() async {
     if (_scanning) {
       await _stopScan();
@@ -308,6 +328,19 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!on) {
         throw Exception(
             'Bluetooth HP mati. Nyalakan Bluetooth dulu, lalu pindai lagi.');
+      }
+      // Perangkat tersimpan — gagal dimuat tak menggagalkan pemindaian.
+      try {
+        final bonded = await _bt.bondedDevices();
+        if (mounted) {
+          setState(() {
+            _bonded =
+                BluetoothPrinterService.sortPrintersFirst(bonded);
+          });
+        }
+      } catch (e) {
+        _snack('Gagal membaca perangkat tersimpan: ${_errMsg(e)}',
+            error: true);
       }
       await _discoverySub?.cancel();
       _discoverySub = _bt.discoveryStream().listen(
@@ -465,7 +498,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Cetak Thermal')),
+      appBar: AppBar(title: const Text('Printer Bar')),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -546,7 +579,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
             const SizedBox(height: 4),
             Text(
-              'Bisa juga via Share > Cetak Thermal dari aplikasi lain.',
+              'Bisa juga via Share > Printer Bar dari aplikasi lain.',
               style: Theme.of(context).textTheme.bodySmall,
             ),
             const SizedBox(height: 8),
@@ -794,8 +827,9 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(height: 4),
             Text(
-              'Nyalakan printer dan pastikan dalam jangkauan, lalu pindai. '
-              'Hanya perangkat yang aktif terdeteksi yang ditampilkan.',
+              'Perangkat yang sudah di-pairing tampil di "Tersimpan". '
+              'Nyalakan printer lalu pindai untuk menemukan perangkat '
+              'baru di sekitar.',
               style: Theme.of(context).textTheme.bodySmall,
             ),
             const SizedBox(height: 8),
@@ -829,12 +863,31 @@ class _HomeScreenState extends State<HomeScreen> {
                 label: const Text('Putuskan koneksi'),
               ),
             ] else ...[
-              for (final d in _devices)
-                DeviceTile(
-                  device: d,
-                  busy: _connectingMac,
-                  onTap: () => _connect(d),
-                ),
+              if (_bonded.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                const Text('Perangkat tersimpan',
+                    style:
+                        TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                for (final d in _bonded)
+                  DeviceTile(
+                    device: d,
+                    busy: _connectingMac,
+                    onTap: () => _connect(d),
+                  ),
+              ],
+              if (_devices.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                const Text('Perangkat tersedia',
+                    style:
+                        TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                for (final d in BluetoothPrinterService.sortPrintersFirst(
+                    _devices))
+                  DeviceTile(
+                    device: d,
+                    busy: _connectingMac,
+                    onTap: () => _connect(d),
+                  ),
+              ],
             ],
           ],
         ),

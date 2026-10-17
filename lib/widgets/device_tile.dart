@@ -2,6 +2,24 @@ import 'package:flutter/material.dart';
 
 import '../services/bluetooth_printer_service.dart';
 
+/// Ikon untuk [DeviceKind] — mirip daftar Bluetooth bawaan HP.
+IconData deviceIconFor(PrinterDevice device) {
+  switch (BluetoothPrinterService.deviceKindFor(device)) {
+    case DeviceKind.printer:
+      return Icons.print;
+    case DeviceKind.headset:
+      return Icons.headset;
+    case DeviceKind.laptop:
+      return Icons.laptop;
+    case DeviceKind.phone:
+      return Icons.smartphone;
+    case DeviceKind.gamepad:
+      return Icons.gamepad;
+    case DeviceKind.other:
+      return Icons.bluetooth;
+  }
+}
+
 /// Baris daftar perangkat Bluetooth.
 class DeviceTile extends StatelessWidget {
   final PrinterDevice device;
@@ -20,7 +38,7 @@ class DeviceTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListTile(
-      leading: const Icon(Icons.print),
+      leading: Icon(deviceIconFor(device)),
       title: Text(device.name),
       subtitle: Text(device.mac),
       trailing: connected

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -28,22 +29,32 @@ class PdfService {
   /// Buka pemilih berkas sistem, kembalikan path PDF yang BISA DIBACA,
   /// atau null bila pengguna batal memilih.
   ///
+  /// Dijamin tidak pernah menggantung selamanya: bila pemilih berkas
+  /// tidak merespons dalam 60 detik (pernah terjadi di sebagian HP
+  /// Xiaomi/MIUI), dilempar [TimeoutException] dengan pesan yang jelas.
+  ///
   /// Melempar [Exception] berbahasa Indonesia bila berkas dipilih tapi
-  /// tidak bisa dibaca (mis. content URI yang path-nya null — penyebab
-  /// umum "preview tidak muncul tanpa error" di sebagian HP Android).
+  /// tidak bisa dibaca.
   Future<String?> pickPdf() async {
+    // API file_picker 13.x: pickFiles tanpa withData; PlatformFile
+    // menyediakan uri/path/readAsBytes (lihat file_picker_platform_interface).
     final files = await FilePicker.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['pdf'],
+    ).timeout(
+      const Duration(seconds: 60),
+      onTimeout: () => throw TimeoutException(
+        'Pemilih berkas tidak merespons dalam 60 detik.',
+      ),
     );
     // Dibatalkan pengguna → list kosong (BUKAN error).
     if (files.isEmpty) return null;
-    final file = files.single;
-    // Jalur 1: path langsung yang bisa dibaca (umumnya dari File Manager).
+    final file = files.first;
+    // Jalur 1: path file lokal yang bisa dibaca.
     final p = file.path;
     if (p != null && File(p).existsSync()) return p;
-    // Jalur 2: URI non-file (mis. content://) yang path-nya null →
-    // baca bytes-nya lalu salin ke direktori cache.
+    // Jalur 2: URI non-file (mis. content://) → baca bytes-nya
+    // lalu salin ke direktori cache agar bisa di-render.
     try {
       final bytes = await file.readAsBytes();
       if (bytes.isNotEmpty) {

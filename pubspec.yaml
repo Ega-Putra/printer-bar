@@ -33,6 +33,14 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  # Generator ikon launcher Android dari assets/icon/icon.png
+  flutter_launcher_icons: ^0.14.4
 
 flutter:
   uses-material-design: true
+
+flutter_launcher_icons:
+  android: true
+  image_path: "assets/icon/icon.png"
+  adaptive_icon_background: "#1F1F1F"
+  adaptive_icon_foreground: "assets/icon/icon.png"

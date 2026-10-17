@@ -1,4 +1,4 @@
-# Cetak Thermal 🖨️
+# Printer Bar 🖨️
 
 Aplikasi Android untuk mencetak resi PDF ke printer thermal Bluetooth.
 

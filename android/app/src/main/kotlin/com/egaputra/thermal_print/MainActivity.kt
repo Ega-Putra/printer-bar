@@ -46,9 +46,45 @@ class MainActivity : FlutterActivity() {
                         cancelDiscovery()
                         result.success(true)
                     }
+                    "getBondedDevices" -> result.success(getBondedDevices())
                     else -> result.notImplemented()
                 }
             }
+    }
+
+    /// Kelas perangkat Bluetooth (major device class, lihat
+    /// android.bluetooth.BluetoothClass.Device.Major), atau null bila
+    /// tak bisa dibaca (butuh izin BLUETOOTH_CONNECT di Android 12+).
+    @Suppress("DEPRECATION")
+    private fun majorDeviceClassOf(device: BluetoothDevice): Int? {
+        return try {
+            device.bluetoothClass?.majorDeviceClass
+        } catch (_: SecurityException) {
+            null
+        }
+    }
+
+    /// Daftar perangkat yang sudah di-pairing ("tersimpan"), beserta
+    /// nama, MAC, dan kelas perangkatnya untuk ikon daftar.
+    @Suppress("DEPRECATION")
+    private fun getBondedDevices(): List<Map<String, Any?>> {
+        val adapter = BluetoothAdapter.getDefaultAdapter() ?: return emptyList()
+        return try {
+            adapter.bondedDevices.map { device ->
+                val name = try {
+                    device.name ?: ""
+                } catch (_: SecurityException) {
+                    ""
+                }
+                mapOf(
+                    "name" to name,
+                    "mac" to device.address,
+                    "deviceClass" to majorDeviceClassOf(device),
+                )
+            }
+        } catch (_: SecurityException) {
+            emptyList()
+        }
     }
 
     @Suppress("DEPRECATION")
@@ -70,7 +106,11 @@ class MainActivity : FlutterActivity() {
                                 ""
                             }
                             eventSink?.success(
-                                mapOf("name" to name, "mac" to device.address)
+                                mapOf(
+                                    "name" to name,
+                                    "mac" to device.address,
+                                    "deviceClass" to majorDeviceClassOf(device),
+                                )
                             )
                         }
                     }

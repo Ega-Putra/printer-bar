@@ -3,20 +3,34 @@ import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
 
-/// Perangkat yang terdeteksi via Bluetooth (aktif di sekitar HP).
+/// Perangkat Bluetooth (printer maupun bukan).
 class PrinterDevice {
   final String name;
   final String mac;
 
-  const PrinterDevice({required this.name, required this.mac});
+  /// Major device class Bluetooth
+  /// (android.bluetooth.BluetoothClass.Device.Major), atau null bila
+  /// tidak diketahui.
+  final int? deviceClass;
+
+  const PrinterDevice({
+    required this.name,
+    required this.mac,
+    this.deviceClass,
+  });
 }
+
+/// Jenis perangkat untuk ikon daftar, diturunkan dari Bluetooth
+/// Class of Device (dan nama sebagai cadangan).
+enum DeviceKind { printer, headset, laptop, phone, gamepad, other }
 
 /// Layanan koneksi Bluetooth SPP ke printer thermal.
 ///
 /// Memakai package `print_bluetooth_thermal` untuk koneksi & tulis data,
-/// dan discovery Bluetooth klasik via MethodChannel native
-/// (lihat MainActivity.kt) agar daftar hanya berisi perangkat yang AKTIF
-/// terdeteksi di sekitar — bukan seluruh riwayat pairing HP.
+/// dan kode native (lihat MainActivity.kt) untuk:
+/// - daftar perangkat tersimpan (bonded) beserta kelas perangkatnya,
+/// - discovery Bluetooth klasik agar perangkat baru yang aktif di sekitar
+///   ikut tampil — mirip daftar Bluetooth bawaan HP.
 class BluetoothPrinterService {
   static const _method =
       MethodChannel('com.egaputra.thermal_print/bt_discovery');
@@ -41,7 +55,7 @@ class BluetoothPrinterService {
     if (denied.isNotEmpty) {
       throw Exception(
         'Izin Bluetooth tidak diberikan. Aktifkan di Pengaturan > Aplikasi > '
-        'Cetak Thermal > Izin, lalu coba lagi.',
+        'Printer Bar > Izin, lalu coba lagi.',
       );
     }
   }
@@ -58,6 +72,58 @@ class BluetoothPrinterService {
     ];
   }
 
+  /// Tentukan [DeviceKind] dari [PrinterDevice].
+  ///
+  /// Nama yang mengandung "print" selalu dianggap printer (banyak printer
+  /// thermal murah melaporkan class generik). Selain itu dipakai major
+  /// device class: IMAGING (0x600) → printer, AUDIO_VIDEO (0x400) →
+  /// headset, COMPUTER (0x100) → laptop, PHONE (0x200) → HP,
+  /// TOY (0x800) → gamepad. Murni-Dart, bisa di-unit-test.
+  static DeviceKind deviceKindFor(PrinterDevice device) {
+    if (device.name.toLowerCase().contains('print')) {
+      return DeviceKind.printer;
+    }
+    switch (device.deviceClass) {
+      case 1536: // IMAGING
+        return DeviceKind.printer;
+      case 1024: // AUDIO_VIDEO
+        return DeviceKind.headset;
+      case 256: // COMPUTER
+        return DeviceKind.laptop;
+      case 512: // PHONE
+        return DeviceKind.phone;
+      case 2048: // TOY
+        return DeviceKind.gamepad;
+      default:
+        return DeviceKind.other;
+    }
+  }
+
+  /// Urutkan printer paling atas, sisanya alfabetis. Murni-Dart,
+  /// bisa di-unit-test.
+  static List<PrinterDevice> sortPrintersFirst(List<PrinterDevice> devices) {
+    final sorted = [...devices];
+    sorted.sort((a, b) {
+      final pa = deviceKindFor(a) == DeviceKind.printer ? 0 : 1;
+      final pb = deviceKindFor(b) == DeviceKind.printer ? 0 : 1;
+      if (pa != pb) return pa.compareTo(pb);
+      return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+    });
+    return sorted;
+  }
+
+  /// Bangun [PrinterDevice] dari map native. Null bila MAC kosong.
+  static PrinterDevice? deviceFromMap(Map<String, dynamic> m) {
+    final mac = (m['mac'] ?? '').toString();
+    if (mac.isEmpty) return null;
+    var name = (m['name'] ?? '').toString();
+    if (name.isEmpty) name = mac;
+    final dc = m['deviceClass'];
+    final deviceClass =
+        dc is int ? dc : int.tryParse(dc?.toString() ?? '');
+    return PrinterDevice(name: name, mac: mac, deviceClass: deviceClass);
+  }
+
   /// Stream perangkat yang ditemukan selama discovery aktif.
   ///
   /// Tiap event = satu perangkat (MAC bisa duplikat → pakai [dedupe]).
@@ -66,12 +132,22 @@ class BluetoothPrinterService {
     return _events.receiveBroadcastStream().map((event) {
       final m = Map<String, dynamic>.from(event as Map);
       if (m['event'] == 'finished') return null;
-      final mac = (m['mac'] ?? '').toString();
-      if (mac.isEmpty) return null;
-      var name = (m['name'] ?? '').toString();
-      if (name.isEmpty) name = mac;
-      return PrinterDevice(name: name, mac: mac);
+      return deviceFromMap(m);
     });
+  }
+
+  /// Perangkat yang sudah di-pairing ("tersimpan") beserta kelas
+  /// perangkatnya, via kode native (lihat MainActivity.kt).
+  ///
+  /// Butuh izin BLUETOOTH_CONNECT — panggil setelah [ensurePermissions].
+  /// Melempar [Exception] bila channel native gagal.
+  Future<List<PrinterDevice>> bondedDevices() async {
+    final list = await _method.invokeMethod<List>('getBondedDevices');
+    if (list == null) return [];
+    return [
+      for (final e in list)
+        deviceFromMap(Map<String, dynamic>.from(e as Map)),
+    ].whereType<PrinterDevice>().toList();
   }
 
   /// Mulai discovery Bluetooth klasik. True bila berhasil dimulai.
