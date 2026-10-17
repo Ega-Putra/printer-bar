@@ -600,6 +600,9 @@ class _HomeScreenState extends State<HomeScreen>
       appBar: AppBar(title: const Text('Printer Bar')),
       body: TabBarView(
         controller: _tabController,
+        // Geser tab dimatikan: pindah tab HANYA via tombol di bawah.
+        // (Geser horizontal TabBarView berkonflik dengan drag kotak crop.)
+        physics: const NeverScrollableScrollPhysics(),
         children: [
           _printTab(),
           _settingsTab(),
@@ -673,6 +676,13 @@ class _HomeScreenState extends State<HomeScreen>
           _modeCard(),
           const SizedBox(height: 12),
           _bluetoothCard(),
+          const SizedBox(height: 24),
+          const Center(
+            child: Text(
+              'Printer Bar v1.0.7',
+              style: TextStyle(color: Colors.grey, fontSize: 12),
+            ),
+          ),
           const SizedBox(height: 24),
         ],
       ),
@@ -879,16 +889,21 @@ class _HomeScreenState extends State<HomeScreen>
       );
     }
     final det = _effectiveDetection(pageIndex)!;
+    final rewritten = det.rawValue != null;
     return Row(
       children: [
-        const Icon(Icons.check_circle_outline, color: Colors.green),
+        Icon(
+          rewritten ? Icons.check_circle_outline : Icons.warning_amber_outlined,
+          color: rewritten ? Colors.green : Colors.orange,
+        ),
         const SizedBox(width: 8),
         Expanded(
           child: Text(
-            det.rawValue != null
-                ? 'Barcode ditemukan ✓\n${det.rawValue} (dibuat ulang tajam)'
-                : 'Barcode ditemukan ✓',
-            style: const TextStyle(color: Colors.green),
+            rewritten
+                ? 'Barcode ditemukan ✓\n${det.rawValue} (ditulis ulang tajam)'
+                : 'Barcode ditemukan ✓\nNilai tak terbaca — memakai crop gambar',
+            style: TextStyle(
+                color: rewritten ? Colors.green : Colors.orange),
           ),
         ),
       ],

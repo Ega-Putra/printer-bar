@@ -32,7 +32,32 @@ class Code128Decoder {
 
   /// Decode nilai Code128 dari area [box] pada [src].
   /// Mengembalikan null bila tidak ada pola valid / checksum salah.
+  ///
+  /// Mencoba beberapa varian bila gagal: box diperlebar (heuristik kadang
+  /// terlalu ketat) dan upscale 2x (modul < 3px sulit di-quantize).
   static String? decode(img.Image src, Box box) {
+    // Varian 1: box asli. Varian 2: box diperlebar 25% tiap sisi.
+    final boxes = <Box>[box];
+    final ex = box.width * 0.25, ey = box.height * 0.25;
+    boxes.add(Box(
+      (box.left - ex).clamp(0.0, src.width.toDouble()),
+      (box.top - ey).clamp(0.0, src.height.toDouble()),
+      (box.right + ex).clamp(0.0, src.width.toDouble()),
+      (box.bottom + ey).clamp(0.0, src.height.toDouble()),
+    ));
+    for (final b in boxes) {
+      final value = _decodeBox(src, b, upscale: false);
+      if (value != null) return value;
+    }
+    // Varian 3-4: upscale 2x untuk barcode kecil.
+    for (final b in boxes) {
+      final value = _decodeBox(src, b, upscale: true);
+      if (value != null) return value;
+    }
+    return null;
+  }
+
+  static String? _decodeBox(img.Image src, Box box, {required bool upscale}) {
     // Beri margin agar quiet zone ikut ke-crop.
     final m = (box.width * 0.08).clamp(4.0, 20.0);
     final l = (box.left - m).clamp(0.0, src.width.toDouble()).round();
@@ -40,7 +65,13 @@ class Code128Decoder {
     final r = (box.right + m).clamp(0.0, src.width.toDouble()).round();
     final b = (box.bottom + m).clamp(0.0, src.height.toDouble()).round();
     if (r - l < 60 || b - t < 16) return null;
-    final region = img.copyCrop(src, x: l, y: t, width: r - l, height: b - t);
+    var region = img.copyCrop(src, x: l, y: t, width: r - l, height: b - t);
+    if (upscale) {
+      region = img.copyResize(region,
+          width: region.width * 2,
+          height: region.height * 2,
+          interpolation: img.Interpolation.linear);
+    }
     final gray = img.grayscale(region);
     final w = gray.width, h = gray.height;
 
