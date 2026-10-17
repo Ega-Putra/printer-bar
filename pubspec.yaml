@@ -1,0 +1,38 @@
+name: thermal_print
+description: "Cetak resi PDF ke printer thermal Bluetooth (58/80/112mm) dengan opsi barcode diperbesar."
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.12.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  # Pilih berkas PDF resi
+  file_picker: ^13.1.0
+  # Render halaman PDF menjadi gambar
+  pdfx: ^2.11.0
+  # Deteksi barcode di gambar resi
+  google_mlkit_barcode_scanning: ^0.16.1
+  # Koneksi Bluetooth SPP ke printer thermal (terawat, tanpa izin lokasi di Android 12+)
+  print_bluetooth_thermal: ^1.2.5
+  # Izin runtime Android (BLUETOOTH_SCAN / BLUETOOTH_CONNECT)
+  permission_handler: ^13.0.2
+  # Cek versi Android untuk logika izin
+  device_info_plus: ^13.3.0
+  # Manipulasi gambar murni-Dart (skala, crop, raster 1-bit)
+  image: ^4.12.0
+  # Direktori temporer untuk hasil render PDF
+  path_provider: ^2.1.0
+  # Terima PDF dari Share sheet aplikasi lain
+  receive_sharing_intent: ^1.9.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
