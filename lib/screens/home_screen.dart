@@ -202,6 +202,12 @@ class _HomeScreenState extends State<HomeScreen> {
       }
       return;
     }
+    // Lepas guard loading: _loadPdfFromPath punya guard re-entrancy
+    // sendiri dan mengatur _loadingPdf-nya sendiri. Tanpa ini ia langsung
+    // return di awal dan UI stuck "Membuka pemilih berkas..." selamanya.
+    if (mounted) {
+      setState(() => _loadingPdf = false);
+    }
     await _loadPdfFromPath(path, name: path.split('/').last);
   }
 
@@ -214,8 +220,17 @@ class _HomeScreenState extends State<HomeScreen> {
     });
     try {
       // Render 2x lebar cetak agar deteksi barcode akurat.
-      final pages =
-          await _pdf.renderPages(path, renderWidth: _paper.dots * 2);
+      // Timeout pengaman: pdfx kadang menggantung di PDF tertentu —
+      // jangan biarkan UI stuck "Me-render PDF..." selamanya.
+      final pages = await _pdf
+          .renderPages(path, renderWidth: _paper.dots * 2)
+          .timeout(
+        const Duration(seconds: 90),
+        onTimeout: () => throw TimeoutException(
+          'Render PDF terlalu lama (90 detik). Berkas mungkin rusak '
+          'atau tidak didukung.',
+        ),
+      );
       if (!mounted) return;
       setState(() {
         _pdfPath = path;
@@ -236,6 +251,8 @@ class _HomeScreenState extends State<HomeScreen> {
       if (_mode == PrintMode.barcodeDiperbesar) {
         await _detectBarcodes();
       }
+    } on TimeoutException catch (e) {
+      _snack('Gagal me-render PDF: ${e.message}', error: true);
     } catch (e) {
       _snack('Gagal memuat PDF: ${_errMsg(e)}', error: true);
     } finally {
