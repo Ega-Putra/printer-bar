@@ -49,6 +49,10 @@ class _HomeScreenState extends State<HomeScreen> {
   /// true = barcode dicetak vertikal (diputar 90°), false = horizontal.
   bool _barcodeVertical = false;
 
+  /// Tinggi barcode yang di-generate ulang, dalam mm (lebar selalu
+  /// penuh selebar kertas).
+  double _barcodeHeightMm = 25;
+
   String? _pdfPath;
   String? _pdfName;
   List<RenderedPage> _pages = [];
@@ -125,7 +129,8 @@ class _HomeScreenState extends State<HomeScreen> {
     if (crop == null) return det;
     final tb = ImagePipeline.translateBox(det.box, crop);
     if (tb == null) return null;
-    return DetectedBarcode(box: tb, rawValue: det.rawValue);
+    return DetectedBarcode(
+        box: tb, rawValue: det.rawValue, format: det.format);
   }
 
   bool get _canPrint =>
@@ -487,10 +492,20 @@ class _HomeScreenState extends State<HomeScreen> {
       }
       throw Exception('Barcode di luar area crop halaman ${pageIndex + 1}.');
     }
-    final padded =
-        ImagePipeline.paddedCrop(det.box, cropped.width, cropped.height);
-    var barcodeImg =
-        ImagePipeline.cropAndScaleToWidth(cropped, padded, dots);
+    // 1. Generate ulang yang tajam & full-width bila ada nilai decode.
+    final barHpx = (_barcodeHeightMm / 25.4 * 203).round();
+    img.Image? barcodeImg = BarcodeService.regenerateBarcode(
+      det: det,
+      widthPx: dots,
+      barHeightPx: barHpx,
+    );
+    // 2. Fallback: crop + skala dari gambar asli (mis. format tak
+    //    didukung atau nilai tak ter-decode).
+    barcodeImg ??= ImagePipeline.cropAndScaleToWidth(
+      cropped,
+      ImagePipeline.paddedCrop(det.box, cropped.width, cropped.height),
+      dots,
+    );
     if (_barcodeVertical) {
       barcodeImg = ImagePipeline.padToWidth(
         ImagePipeline.rotate90Clockwise(barcodeImg),
@@ -813,12 +828,19 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       );
     }
-    return const Row(
+    final det = _effectiveDetection(pageIndex)!;
+    return Row(
       children: [
-        Icon(Icons.check_circle_outline, color: Colors.green),
-        SizedBox(width: 8),
-        Text('Barcode ditemukan ✓',
-            style: TextStyle(color: Colors.green)),
+        const Icon(Icons.check_circle_outline, color: Colors.green),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            det.rawValue != null
+                ? 'Barcode ditemukan ✓\n${det.rawValue} (dibuat ulang tajam)'
+                : 'Barcode ditemukan ✓',
+            style: const TextStyle(color: Colors.green),
+          ),
+        ),
       ],
     );
   }
@@ -895,9 +917,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 ],
               ),
             ),
-            if (_mode == PrintMode.barcodeDiperbesar)
+            if (_mode == PrintMode.barcodeDiperbesar) ...[
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
                 // Wrap (bukan Row) agar tak pernah overflow di layar sempit.
                 child: Wrap(
                   spacing: 8,
@@ -909,19 +931,49 @@ class _HomeScreenState extends State<HomeScreen> {
                       label: const Text('Horizontal'),
                       avatar: const Icon(Icons.more_horiz, size: 18),
                       selected: !_barcodeVertical,
-                      onSelected: (_) =>
-                          setState(() => _barcodeVertical = false),
+                      onSelected: (_) {
+                        setState(() => _barcodeVertical = false);
+                        _refreshPrintPreview();
+                      },
                     ),
                     ChoiceChip(
                       label: const Text('Vertikal'),
                       avatar: const Icon(Icons.more_vert, size: 18),
                       selected: _barcodeVertical,
-                      onSelected: (_) =>
-                          setState(() => _barcodeVertical = true),
+                      onSelected: (_) {
+                        setState(() => _barcodeVertical = true);
+                        _refreshPrintPreview();
+                      },
                     ),
                   ],
                 ),
               ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                child: Row(
+                  children: [
+                    const Text('Tinggi barcode:'),
+                    Expanded(
+                      child: Slider(
+                        value: _barcodeHeightMm,
+                        min: 10,
+                        max: 50,
+                        divisions: 8,
+                        label: '${_barcodeHeightMm.round()} mm',
+                        onChanged: (v) =>
+                            setState(() => _barcodeHeightMm = v),
+                        onChangeEnd: (_) => _refreshPrintPreview(),
+                      ),
+                    ),
+                    SizedBox(
+                      width: 52,
+                      child: Text('${_barcodeHeightMm.round()} mm',
+                          textAlign: TextAlign.end),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             SwitchListTile(
               title: const Text('Dithering (untuk foto)'),
               subtitle: const Text(

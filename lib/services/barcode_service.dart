@@ -1,6 +1,8 @@
 import 'dart:io';
 
+import 'package:barcode_image/barcode_image.dart' as bc;
 import 'package:google_mlkit_barcode_scanning/google_mlkit_barcode_scanning.dart';
+import 'package:image/image.dart' as img;
 
 import 'image_pipeline.dart';
 
@@ -12,7 +14,10 @@ class DetectedBarcode {
   /// Nilai hasil decode (bisa null bila tak terbaca, kotak tetap valid).
   final String? rawValue;
 
-  const DetectedBarcode({required this.box, this.rawValue});
+  /// Format menurut ML Kit (null bila dari fallback heuristik).
+  final BarcodeFormat? format;
+
+  const DetectedBarcode({required this.box, this.rawValue, this.format});
 }
 
 /// Deteksi barcode memakai Google ML Kit (on-device, semua format standar).
@@ -34,6 +39,7 @@ class BarcodeService {
           return DetectedBarcode(
             box: Box(rect.left, rect.top, rect.right, rect.bottom),
             rawValue: b.rawValue,
+            format: b.format,
           );
         }).toList();
       }
@@ -64,6 +70,87 @@ class BarcodeService {
       if (b.box.area > best.box.area) best = b;
     }
     return best;
+  }
+
+  /// Petakan format ML Kit ke generator package:barcode.
+  /// null = tidak didukung (mis. QR / 2D) → pemanggil pakai fallback crop.
+  static bc.Barcode? _toBarcode(BarcodeFormat? format) {
+    switch (format) {
+      case BarcodeFormat.code128:
+        return bc.Barcode.code128();
+      case BarcodeFormat.code39:
+        return bc.Barcode.code39();
+      case BarcodeFormat.code93:
+        return bc.Barcode.code93();
+      case BarcodeFormat.codabar:
+        return bc.Barcode.codabar();
+      case BarcodeFormat.ean13:
+        return bc.Barcode.ean13();
+      case BarcodeFormat.ean8:
+        return bc.Barcode.ean8();
+      case BarcodeFormat.itf:
+        return bc.Barcode.itf();
+      case BarcodeFormat.upca:
+        return bc.Barcode.upcA();
+      case BarcodeFormat.upce:
+        return bc.Barcode.upcE();
+      default:
+        return null;
+    }
+  }
+
+  /// Generate ulang barcode yang TAJAM dari nilai hasil decode,
+  /// selebar [widthPx] piksel penuh dengan tinggi bilah [barHeightPx].
+  /// Nilai dicetak di bawah bilah seperti label resi asli.
+  ///
+  /// Mengembalikan null bila tidak ada nilai decode atau format tidak
+  /// didukung — pemanggil memakai fallback crop+skala dari gambar asli.
+  static img.Image? regenerateBarcode({
+    required DetectedBarcode det,
+    required int widthPx,
+    required int barHeightPx,
+  }) {
+    final value = det.rawValue;
+    if (value == null || value.isEmpty) return null;
+    final generator = _toBarcode(det.format);
+    if (generator == null) return null;
+    try {
+      // Validasi dulu: make() melempar bila data tak cocok formatnya
+      // (mis. EAN-13 dengan digit salah).
+      generator.make(value,
+          width: widthPx.toDouble(), height: barHeightPx.toDouble());
+    } catch (_) {
+      return null;
+    }
+    try {
+      final font = widthPx < 500 ? img.arial14 : img.arial24;
+      final textH = font.lineHeight + 10;
+      final out =
+          img.Image(width: widthPx, height: barHeightPx + textH);
+      img.fill(out, color: img.ColorRgb8(255, 255, 255));
+      // Bilah full-width di atas (tanpa teks bawaan — kita gambar
+      // sendiri agar posisinya pasti).
+      bc.drawBarcode(
+        out,
+        generator,
+        value,
+        width: widthPx,
+        height: barHeightPx,
+      );
+      // Nilai di bawah, rata tengah.
+      final tw = font.getMetrics(value).width;
+      img.drawString(
+        out,
+        value,
+        font: font,
+        x: ((widthPx - tw) ~/ 2).clamp(0, widthPx),
+        y: barHeightPx + 4,
+        color: img.ColorRgb8(0, 0, 0),
+      );
+      return out;
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<void> dispose() => _scanner.close();

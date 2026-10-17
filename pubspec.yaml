@@ -1,7 +1,7 @@
 name: thermal_print
 description: "Cetak resi PDF ke printer thermal Bluetooth (58/80/112mm) dengan opsi barcode diperbesar."
 publish_to: 'none'
-version: 1.0.3+4
+version: 1.0.4+5
 
 environment:
   sdk: ^3.12.0
@@ -24,6 +24,10 @@ dependencies:
   device_info_plus: ^13.3.0
   # Manipulasi gambar murni-Dart (skala, crop, raster 1-bit)
   image: ^4.12.0
+  # Generate ulang barcode dari nilai hasil decode (tajam, full-width)
+  barcode: ^2.2.9
+  # Gambar barcode ke image package
+  barcode_image: ^2.0.3
   # Direktori temporer untuk hasil render PDF
   path_provider: ^2.1.0
   # Terima PDF dari Share sheet aplikasi lain
