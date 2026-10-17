@@ -679,7 +679,7 @@ class _HomeScreenState extends State<HomeScreen>
           const SizedBox(height: 24),
           const Center(
             child: Text(
-              'Printer Bar v1.0.7',
+              'Printer Bar v1.0.8',
               style: TextStyle(color: Colors.grey, fontSize: 12),
             ),
           ),

@@ -1,7 +1,7 @@
 name: thermal_print
 description: "Cetak resi PDF ke printer thermal Bluetooth (58/80/112mm) dengan opsi barcode diperbesar."
 publish_to: 'none'
-version: 1.0.7+8
+version: 1.0.8+9
 
 environment:
   sdk: ^3.12.0

@@ -30,13 +30,9 @@ class Code128Decoder {
     for (var v = 0; v <= 105; v++) kCode128Patterns[v].join(','): v,
   };
 
-  /// Decode nilai Code128 dari area [box] pada [src].
-  /// Mengembalikan null bila tidak ada pola valid / checksum salah.
-  ///
-  /// Mencoba beberapa varian bila gagal: box diperlebar (heuristik kadang
-  /// terlalu ketat) dan upscale 2x (modul < 3px sulit di-quantize).
+  /// Decode dari area [box]. Bila gagal, cari ke seluruh gambar.
   static String? decode(img.Image src, Box box) {
-    // Varian 1: box asli. Varian 2: box diperlebar 25% tiap sisi.
+    // Varian box: asli, diperlebar 25%, masing-masing 1x dan 2x upscale.
     final boxes = <Box>[box];
     final ex = box.width * 0.25, ey = box.height * 0.25;
     boxes.add(Box(
@@ -45,20 +41,101 @@ class Code128Decoder {
       (box.right + ex).clamp(0.0, src.width.toDouble()),
       (box.bottom + ey).clamp(0.0, src.height.toDouble()),
     ));
-    for (final b in boxes) {
-      final value = _decodeBox(src, b, upscale: false);
+    for (final upscale in [false, true]) {
+      for (final b in boxes) {
+        final value = _decodeBox(src, b, upscale: upscale);
+        if (value != null) return value;
+      }
+    }
+    // Fallback terakhir: cari ke seluruh gambar (box bisa salah).
+    return decodeFullImage(src);
+  }
+
+  /// Cari & decode Code128 di seluruh [src] tanpa mengandalkan box.
+  static String? decodeFullImage(img.Image src) {
+    final gray = img.grayscale(src);
+    final w = gray.width, h = gray.height;
+    if (w < 100 || h < 40) return null;
+    // Pindai tiap 12px; prioritaskan area tengah dulu.
+    for (var y0 = h ~/ 4; y0 < h * 3 ~/ 4; y0 += 12) {
+      final value = _searchLine(gray, w, h, y0);
       if (value != null) return value;
     }
-    // Varian 3-4: upscale 2x untuk barcode kecil.
-    for (final b in boxes) {
-      final value = _decodeBox(src, b, upscale: true);
+    for (var y0 = 8; y0 < h ~/ 4; y0 += 12) {
+      final value = _searchLine(gray, w, h, y0);
+      if (value != null) return value;
+    }
+    for (var y0 = h * 3 ~/ 4; y0 < h - 8; y0 += 12) {
+      final value = _searchLine(gray, w, h, y0);
+      if (value != null) return value;
+    }
+    return null;
+  }
+
+  /// Cari pola start pada baris [y0] di seluruh lebar gambar.
+  static String? _searchLine(img.Image gray, int w, int h, int y0) {
+    final lum = List<double>.filled(w, 0);
+    var rows = 0;
+    for (var y = y0 - 1; y <= y0 + 1; y++) {
+      if (y < 0 || y >= h) continue;
+      rows++;
+      for (var x = 0; x < w; x++) {
+        lum[x] += gray.getPixel(x, y).r.toDouble();
+      }
+    }
+    if (rows == 0) return null;
+    var minL = double.infinity, maxL = 0.0;
+    for (var x = 0; x < w; x++) {
+      lum[x] /= rows;
+      if (lum[x] < minL) minL = lum[x];
+      if (lum[x] > maxL) maxL = lum[x];
+    }
+    if (maxL - minL < 40) return null;
+    final thr = (minL + maxL) / 2;
+
+    // Semua run pada baris ini.
+    final runs = <int>[];
+    final blacks = <bool>[];
+    var isBlack = lum[0] < thr;
+    var len = 0;
+    for (var x = 0; x < w; x++) {
+      final black = lum[x] < thr;
+      if (black == isBlack) {
+        len++;
+      } else {
+        runs.add(len);
+        blacks.add(isBlack);
+        isBlack = black;
+        len = 1;
+      }
+    }
+    runs.add(len);
+    blacks.add(isBlack);
+    if (runs.length < 20) return null;
+
+    // Coba tiap posisi run hitam sebagai awal start.
+    for (var s = 0; s < runs.length - 12; s++) {
+      if (!blacks[s]) continue;
+      final m6 = runs.sublist(s, s + 6).reduce((a, b) => a + b) / 11.0;
+      if (m6 < 1.5) continue;
+      final q = <int>[];
+      for (var i = s; i < runs.length; i++) {
+        q.add((runs[i] / m6).round());
+      }
+      final startCode = _lookup(q, 0);
+      if (startCode == null ||
+          (startCode != _startA &&
+              startCode != _startB &&
+              startCode != _startC)) {
+        continue;
+      }
+      final value = _decodeSymbols(q, startCode);
       if (value != null) return value;
     }
     return null;
   }
 
   static String? _decodeBox(img.Image src, Box box, {required bool upscale}) {
-    // Beri margin agar quiet zone ikut ke-crop.
     final m = (box.width * 0.08).clamp(4.0, 20.0);
     final l = (box.left - m).clamp(0.0, src.width.toDouble()).round();
     final t = (box.top - m).clamp(0.0, src.height.toDouble()).round();
@@ -74,8 +151,6 @@ class Code128Decoder {
     }
     final gray = img.grayscale(region);
     final w = gray.width, h = gray.height;
-
-    // Coba beberapa scanline horizontal untuk ketahanan terhadap cacat baris.
     for (final fy in [0.35, 0.5, 0.65]) {
       final value = _decodeScanline(gray, w, h, fy);
       if (value != null) return value;
@@ -84,7 +159,6 @@ class Code128Decoder {
   }
 
   static String? _decodeScanline(img.Image gray, int w, int h, double fy) {
-    // Rata-rata 5 baris di sekitar fy untuk meredam noise.
     final yc = (h * fy).round().clamp(2, h - 3);
     final lum = List<double>.filled(w, 0);
     for (var y = yc - 2; y <= yc + 2; y++) {
@@ -98,10 +172,9 @@ class Code128Decoder {
       if (lum[x] < minL) minL = lum[x];
       if (lum[x] > maxL) maxL = lum[x];
     }
-    if (maxL - minL < 40) return null; // kontras terlalu rendah
+    if (maxL - minL < 40) return null;
     final thr = (minL + maxL) / 2;
 
-    // Ekstrak run bar/spasi, mulai dari bar hitam pertama (lewati quiet zone).
     var x = 0;
     while (x < w && lum[x] >= thr) {
       x++;
@@ -121,64 +194,49 @@ class Code128Decoder {
       }
     }
     runs.add(len);
-    // Barcode Code128 selalu diakhiri bar hitam (bagian stop), jadi run
-    // putih di ujung adalah quiet zone -> buang agar tak mengacaukan parse.
-    if (!isBlack) {
-      runs.removeLast();
-    }
+    if (!isBlack) runs.removeLast(); // buang quiet zone kanan
     if (runs.length < 20) return null;
 
-    // Estimasi 1 modul dari simbol start (6 run pertama = 11 modul).
-    // Jauh lebih stabil daripada min(run) yang rapuh terhadap rounding
-    // 1-px saat render. Fallback: run tersempit.
-    final moduleCandidates = <double>[
+    for (final module in [
       runs.sublist(0, 6).reduce((a, b) => a + b) / 11.0,
       runs.reduce((a, b) => a < b ? a : b).toDouble(),
-    ];
-    for (final module in moduleCandidates) {
-      final value = _decodeWithModule(runs: runs, module: module);
+    ]) {
+      if (module < 1.0) continue;
+      final q = runs.map((e) => (e / module).round()).toList();
+      final startCode = _lookup(q, 0);
+      if (startCode == null ||
+          (startCode != _startA &&
+              startCode != _startB &&
+              startCode != _startC)) {
+        continue;
+      }
+      final value = _decodeSymbols(q, startCode);
       if (value != null) return value;
     }
     return null;
   }
 
-  static String? _decodeWithModule({
-    required List<int> runs,
-    required double module,
-  }) {
-    if (module < 1.0) return null;
-    final q = runs.map((e) => (e / module).round()).toList();
-    // Tidak ada cek rentang global di sini: pola yang tak valid otomatis
-    // gagal di table lookup di bawah, dan checksum memverifikasi hasil akhir.
-
-    // Simbol pertama harus Start A/B/C.
-    final startCode = _lookup(q, 0);
-    if (startCode == null) return null;
-    if (startCode != _startA && startCode != _startB && startCode != _startC) {
-      return null;
-    }
-    final start = startCode;
-
+  /// Parse simbol dari [q] (ter-quantize) mulai dengan [start] yang valid.
+  /// Verifikasi checksum lalu konversi ke string.
+  static String? _decodeSymbols(List<int> q, int start) {
     final values = <int>[start];
     var pos = 6;
     while (true) {
-      if (_isStop(q, pos)) break; // pola stop (7 run) -> selesai
+      if (_isStop(q, pos)) break;
       if (pos + 6 > q.length) return null;
       final v = _lookup(q, pos);
       if (v == null || v == _stop) return null;
       values.add(v);
       pos += 6;
-      if (values.length > 60) return null; // terlalu panjang, pasti salah
+      if (values.length > 60) return null;
     }
-
-    // Verifikasi checksum: (start + Σ nilai_i × posisi_i) mod 103.
+    // Checksum: (start + Σ nilai_i × posisi_i) mod 103.
     var sum = values[0];
     for (var i = 1; i < values.length - 1; i++) {
       sum += values[i] * i;
     }
     if (sum % 103 != values.last) return null;
 
-    // Konversi nilai -> string sesuai code set (dengan switch & shift).
     final sb = StringBuffer();
     var curSet = start == _startA ? 'A' : (start == _startB ? 'B' : 'C');
     var shift = false;
@@ -187,8 +245,6 @@ class Code128Decoder {
       final useSet = shift ? (curSet == 'A' ? 'B' : 'A') : curSet;
       shift = false;
       if (useSet == 'C') {
-        // Di set C, 0-99 semuanya data (pasangan digit) — termasuk 96-99.
-        // Fungsi yang valid di sini hanya switch set & FNC1.
         if (v == _codeB) {
           curSet = 'B';
           continue;
@@ -205,7 +261,6 @@ class Code128Decoder {
         sb.write(v.toString().padLeft(2, '0'));
         continue;
       }
-      // Set A/B: 96-102 adalah kode fungsi.
       if (v == _codeC) {
         curSet = 'C';
         continue;
@@ -223,7 +278,7 @@ class Code128Decoder {
         continue;
       }
       if (v == _fnc1) {
-        sb.write('{1}'); // marker FNC1 yang dimengerti package barcode
+        sb.write('{1}');
         continue;
       }
       if (v == _fnc2) {
@@ -246,13 +301,11 @@ class Code128Decoder {
     return result.isEmpty ? null : result;
   }
 
-  /// Nilai simbol dari 6 run pada [pos], atau null bila tak dikenal.
   static int? _lookup(List<int> q, int pos) {
     if (pos + 6 > q.length) return null;
     return _patternToValue[q.sublist(pos, pos + 6).join(',')];
   }
 
-  /// true bila run pada [pos] cocok pola stop (7 run = 13 modul).
   static bool _isStop(List<int> q, int pos) {
     if (pos + 7 > q.length) return false;
     final want = kCode128Patterns[_stop];
