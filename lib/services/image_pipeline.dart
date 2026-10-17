@@ -151,6 +151,72 @@ class ImagePipeline {
     return decoded;
   }
 
+  /// Ubah gambar menjadi byte raster 1-bit memakai dithering
+  /// Floyd-Steinberg — jauh lebih bagus untuk foto/gambar bergradasi
+  /// dibanding threshold keras (teks & barcode murni hitam-putih
+  /// praktis tidak berubah).
+  ///
+  /// Lebar [src] HARUS kelipatan 8. Piksel paling signifikan = piksel
+  /// paling kiri, siap dikirim lewat perintah ESC/POS `GS v 0`.
+  static Uint8List toRasterBytesDithered(img.Image src) {
+    assert(src.width % 8 == 0, 'lebar gambar harus kelipatan 8');
+    final gray = img.grayscale(src);
+    final w = src.width;
+    final h = src.height;
+    final buf = Float64List(w * h);
+    for (var y = 0; y < h; y++) {
+      for (var x = 0; x < w; x++) {
+        buf[y * w + x] = gray.getPixel(x, y).r.toDouble();
+      }
+    }
+    final bytesPerRow = w ~/ 8;
+    final out = Uint8List(bytesPerRow * h);
+    for (var y = 0; y < h; y++) {
+      for (var x = 0; x < w; x++) {
+        final i = y * w + x;
+        final oldV = buf[i];
+        final newV = oldV < 128 ? 0.0 : 255.0;
+        if (newV == 0.0) {
+          out[y * bytesPerRow + (x ~/ 8)] |= (0x80 >> (x % 8));
+        }
+        final err = oldV - newV;
+        if (err != 0) {
+          if (x + 1 < w) buf[i + 1] += err * 7 / 16;
+          if (y + 1 < h) {
+            if (x > 0) buf[i + w - 1] += err * 3 / 16;
+            buf[i + w] += err * 5 / 16;
+            if (x + 1 < w) buf[i + w + 1] += err * 1 / 16;
+          }
+        }
+      }
+    }
+    return out;
+  }
+
+  /// Ubah byte raster 1-bit kembali menjadi gambar hitam-putih —
+  /// dipakai untuk pratinjau "persis seperti hasil cetak".
+  /// [widthPx] HARUS kelipatan 8.
+  static img.Image rasterToImage(Uint8List raster, int widthPx) {
+    assert(widthPx % 8 == 0, 'lebar harus kelipatan 8');
+    final bytesPerRow = widthPx ~/ 8;
+    final h = raster.length ~/ bytesPerRow;
+    final out = img.Image(width: widthPx, height: h);
+    for (var y = 0; y < h; y++) {
+      for (var x = 0; x < widthPx; x++) {
+        final bit =
+            (raster[y * bytesPerRow + (x ~/ 8)] >> (7 - (x % 8))) & 1;
+        out.setPixel(
+          x,
+          y,
+          bit == 1
+              ? img.ColorRgb8(0, 0, 0)
+              : img.ColorRgb8(255, 255, 255),
+        );
+      }
+    }
+    return out;
+  }
+
   /// Cari area barcode 1D (garis vertikal rapat) secara heuristik.
   ///
   /// Fallback murni-Dart bila pemindai ML Kit tidak menemukan apa-apa

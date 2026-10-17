@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:image/image.dart' as img;
@@ -40,6 +41,11 @@ class _HomeScreenState extends State<HomeScreen> {
   PaperSize _paper = PaperSize.mm58;
   PrintMode _mode = PrintMode.asli;
 
+  /// Dithering Floyd-Steinberg saat rasterisasi — hasil foto/gambar
+  /// bergradasi jauh lebih halus. Teks & barcode murni hitam-putih
+  /// praktis tidak berubah.
+  bool _dithering = true;
+
   /// true = barcode dicetak vertikal (diputar 90°), false = horizontal.
   bool _barcodeVertical = false;
 
@@ -48,6 +54,11 @@ class _HomeScreenState extends State<HomeScreen> {
   List<RenderedPage> _pages = [];
   int _previewIndex = 0;
   bool _loadingPdf = false;
+
+  /// Byte PNG pratinjau "persis seperti hasil cetak" untuk halaman
+  /// aktif (sudah termasuk barcode yang diperbesar + dithering).
+  /// null = belum bisa dihitung (mis. barcode belum terdeteksi).
+  Uint8List? _printPreviewBytes;
 
   /// true saat jari sedang drag di editor crop → scroll halaman dikunci
   /// supaya halaman tidak ikut terscroll saat box digerakkan.
@@ -253,7 +264,9 @@ class _HomeScreenState extends State<HomeScreen> {
         }
       });
       if (_mode == PrintMode.barcodeDiperbesar) {
-        await _detectBarcodes();
+        await _detectBarcodes(); // diakhiri _refreshPrintPreview()
+      } else {
+        _refreshPrintPreview();
       }
     } on TimeoutException catch (e) {
       _snack('Gagal me-render PDF: ${e.message}', error: true);
@@ -290,6 +303,13 @@ class _HomeScreenState extends State<HomeScreen> {
         page.height.toDouble(),
       );
     });
+    _refreshPrintPreview();
+  }
+
+  void _setPreviewIndex(int i) {
+    if (i == _previewIndex) return;
+    setState(() => _previewIndex = i);
+    _refreshPrintPreview();
   }
 
   // ---------- Mode & deteksi barcode ----------
@@ -300,7 +320,9 @@ class _HomeScreenState extends State<HomeScreen> {
         _pages.isNotEmpty &&
         _detections.isEmpty &&
         !_detecting) {
-      await _detectBarcodes();
+      await _detectBarcodes(); // diakhiri _refreshPrintPreview()
+    } else {
+      _refreshPrintPreview();
     }
   }
 
@@ -326,6 +348,7 @@ class _HomeScreenState extends State<HomeScreen> {
     } finally {
       if (mounted) setState(() => _detecting = false);
     }
+    _refreshPrintPreview();
   }
 
   // ---------- Bluetooth ----------
@@ -477,6 +500,32 @@ class _HomeScreenState extends State<HomeScreen> {
     return ImagePipeline.composeVertical([pageForPrint, barcodeImg]);
   }
 
+  /// Rasterisasi [finalImg] sesuai pilihan dithering.
+  Uint8List _rasterize(img.Image finalImg) => _dithering
+      ? ImagePipeline.toRasterBytesDithered(finalImg)
+      : ImagePipeline.toRasterBytes(finalImg);
+
+  /// Hitung ulang pratinjau "persis seperti hasil cetak" untuk halaman
+  /// aktif: compose → raster (sesuai mode dithering) → gambar 1-bit.
+  /// Dipanggil pada setiap perubahan diskrit (bukan tiap frame drag).
+  void _refreshPrintPreview() {
+    if (_pages.isEmpty || !mounted) {
+      _printPreviewBytes = null;
+      return;
+    }
+    try {
+      final composed = _composePage(_previewIndex, _paper.dots);
+      final raster = _rasterize(composed);
+      final previewImg = ImagePipeline.rasterToImage(raster, _paper.dots);
+      _printPreviewBytes =
+          Uint8List.fromList(img.encodePng(previewImg));
+    } catch (_) {
+      // Mis. mode barcode tapi deteksi belum ada → preview kosong.
+      _printPreviewBytes = null;
+    }
+    if (mounted) setState(() {});
+  }
+
   Future<void> _print() async {
     if (!_canPrint) return;
     setState(() {
@@ -493,7 +542,7 @@ class _HomeScreenState extends State<HomeScreen> {
         setState(
             () => _progress = 'Mencetak halaman ${i + 1}/${_pages.length}...');
         final finalImg = _composePage(i, dots);
-        final raster = ImagePipeline.toRasterBytes(finalImg);
+        final raster = _rasterize(finalImg);
         final job = EscPosBuilder.buildImageJob(
           raster: raster,
           widthBytes: dots ~/ 8,
@@ -534,6 +583,8 @@ class _HomeScreenState extends State<HomeScreen> {
             if (_pages.isNotEmpty) ...[
               const SizedBox(height: 12),
               _previewCard(),
+              const SizedBox(height: 12),
+              _printPreviewCard(),
             ],
             const SizedBox(height: 12),
             _modeCard(),
@@ -671,6 +722,10 @@ class _HomeScreenState extends State<HomeScreen> {
                   if (mounted && dragging != _cropDragging) {
                     setState(() => _cropDragging = dragging);
                   }
+                  // Drag selesai (jari diangkat) → perbarui pratinjau
+                  // hasil cetak. Selama drag tidak dihitung ulang agar
+                  // geseran tetap mulus.
+                  if (!dragging) _refreshPrintPreview();
                 },
               ),
             ),
@@ -680,7 +735,7 @@ class _HomeScreenState extends State<HomeScreen> {
               children: [
                 for (var i = 0; i < _pages.length; i++)
                   GestureDetector(
-                    onTap: () => setState(() => _previewIndex = i),
+                    onTap: () => _setPreviewIndex(i),
                     child: Container(
                       width: 24,
                       height: 24,
@@ -768,6 +823,46 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  /// Pratinjau WYSIWYG: persis seperti yang keluar dari printer
+  /// (crop + skala kertas + barcode diperbesar + dithering).
+  Widget _printPreviewCard() {
+    final bytes = _printPreviewBytes;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Pratinjau Hasil Cetak',
+                style:
+                    TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            const SizedBox(height: 4),
+            Text(
+              'Persis seperti yang keluar dari printer — halaman '
+              '${_previewIndex + 1}.',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: 8),
+            if (bytes != null)
+              Container(
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.grey.shade300),
+                  color: Colors.white,
+                ),
+                child: Image.memory(bytes),
+              )
+            else
+              const Text(
+                'Belum bisa dipratinjau (mis. barcode belum terdeteksi).',
+                style: TextStyle(color: Colors.grey),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _modeCard() {
     return Card(
       child: Padding(
@@ -827,6 +922,16 @@ class _HomeScreenState extends State<HomeScreen> {
                   ],
                 ),
               ),
+            SwitchListTile(
+              title: const Text('Dithering (untuk foto)'),
+              subtitle: const Text(
+                  'Foto & gambar bergradasi tercetak lebih halus'),
+              value: _dithering,
+              onChanged: (v) {
+                setState(() => _dithering = v);
+                _refreshPrintPreview();
+              },
+            ),
           ],
         ),
       ),

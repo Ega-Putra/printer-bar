@@ -222,4 +222,60 @@ void main() {
       expect(box!.top, lessThan(400.0));
     });
   });
+
+  group('dithering & rasterToImage', () {
+    test('toRasterBytesDithered: gradasi -> ada hitam & putih', () {
+      // Gradasi horizontal 64px: kiri hitam -> kanan putih.
+      final im = img.Image(width: 64, height: 16);
+      for (var y = 0; y < 16; y++) {
+        for (var x = 0; x < 64; x++) {
+          final v = (x * 255 ~/ 63);
+          im.setPixel(x, y, img.ColorRgb8(v, v, v));
+        }
+      }
+      final raster = ImagePipeline.toRasterBytesDithered(im);
+      expect(raster.length, 64 ~/ 8 * 16);
+      final blackBytes =
+          raster.where((b) => b != 0).length;
+      final whiteBytes =
+          raster.where((b) => b == 0).length;
+      expect(blackBytes, greaterThan(0));
+      expect(whiteBytes, greaterThan(0));
+      // Kiri harus jauh lebih hitam daripada kanan.
+      var leftBlack = 0;
+      var rightBlack = 0;
+      for (var y = 0; y < 16; y++) {
+        for (var x = 0; x < 16; x++) {
+          if ((raster[y * 8 + (x ~/ 8)] >> (7 - (x % 8)) & 1) == 1) {
+            leftBlack++;
+          }
+        }
+        for (var x = 48; x < 64; x++) {
+          if ((raster[y * 8 + (x ~/ 8)] >> (7 - (x % 8)) & 1) == 1) {
+            rightBlack++;
+          }
+        }
+      }
+      expect(leftBlack, greaterThan(rightBlack * 4));
+    });
+
+    test('toRasterBytesDithered: hitam-putih murni tidak berubah', () {
+      final bytes = ImagePipeline.toRasterBytesDithered(testStripe());
+      expect(bytes, Uint8List.fromList(List.filled(8, 0xF0)));
+    });
+
+    test('rasterToImage: roundtrip stripe 8x8', () {
+      final raster = ImagePipeline.toRasterBytes(testStripe());
+      final back = ImagePipeline.rasterToImage(raster, 8);
+      expect(back.width, 8);
+      expect(back.height, 8);
+      for (var y = 0; y < 8; y++) {
+        for (var x = 0; x < 8; x++) {
+          final expectedBlack = x < 4;
+          expect(back.getPixel(x, y).r == 0, expectedBlack,
+              reason: 'piksel ($x,$y)');
+        }
+      }
+    });
+  });
 }

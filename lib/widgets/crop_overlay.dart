@@ -64,6 +64,17 @@ class _CropEditorState extends State<CropEditor> {
     _live = widget.box;
   }
 
+  @override
+  void didUpdateWidget(CropEditor oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Parent mengirim objek box baru (mis. tombol Reset) → ikuti.
+    // Objek yang sama (hasil drag sendiri) diabaikan agar tidak
+    // menimpa box yang sedang digerakkan.
+    if (!identical(widget.box, oldWidget.box)) {
+      _live = widget.box;
+    }
+  }
+
   int get _iw => widget.imageWidth;
   int get _ih => widget.imageHeight;
 
