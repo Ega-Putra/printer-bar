@@ -128,13 +128,17 @@ class BarcodeService {
       final out =
           img.Image(width: widthPx, height: barHeightPx + textH);
       img.fill(out, color: img.ColorRgb8(255, 255, 255));
-      // Bilah full-width di atas (tanpa teks bawaan — kita gambar
-      // sendiri agar posisinya pasti).
+      // Bilah di atas (tanpa teks bawaan — kita gambar sendiri agar
+      // posisinya pasti). Disisakan quiet zone (margin putih) di
+      // kiri-kanan selebar ±5% agar barcode tetap kebaca scanner —
+      // standar: minimal 10x lebar modul tersempit per sisi.
+      final qz = (widthPx * 0.05).round().clamp(16, 48);
       bc.drawBarcode(
         out,
         generator,
         value,
-        width: widthPx,
+        x: qz,
+        width: widthPx - 2 * qz,
         height: barHeightPx,
       );
       // Nilai di bawah, rata tengah.

@@ -31,6 +31,15 @@ void main() {
       final region = ImagePipeline.findBarcodeRegion(out);
       expect(region, isNotNull);
       expect(region!.width, greaterThan(300));
+      // Quiet zone: 16px terluar kiri-kanan di area bilah harus putih.
+      for (var y = 0; y < 200; y++) {
+        for (var x = 0; x < 16; x++) {
+          expect(out.getPixel(x, y).r, 255,
+              reason: 'quiet zone kiri ($x,$y)');
+          expect(out.getPixel(383 - x, y).r, 255,
+              reason: 'quiet zone kanan (${383 - x},$y)');
+        }
+      }
     });
 
     test('tanpa nilai decode -> null (fallback crop)', () {
