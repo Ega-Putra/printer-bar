@@ -187,20 +187,24 @@ class BluetoothPrinterService {
 
   Future<bool> get isConnected => PrintBluetoothThermal.connectionStatus;
 
-  /// Kirim [bytes] ke printer dalam potongan 2 KB agar aman di semua
-  /// perangkat. Melempar [Exception] bila ada potongan yang gagal.
+  /// Kirim [bytes] ke printer dalam SATU panggilan method channel.
+  ///
+  /// PENTING — jangan dipecah jadi beberapa panggilan: kode native
+  /// `print_bluetooth_thermal` (`handleWriteBytes`) menyisipkan satu byte
+  /// 0x0A (line feed) di AWAL setiap pemanggilan `writeBytes`. Bila job
+  /// raster `GS v 0` dipecah jadi N panggilan, potongan ke-2..N mendapat
+  /// 0x0A di TENGAH aliran raster → tiap baris setelahnya bergeser
+  /// 1 byte (= 8 dots) ke kanan, terakumulasi tiap potongan. Itulah
+  /// artefak "stair-step" di cetakan fisik (satu 0x0A di awal job tidak
+  /// masalah: dieksekusi sebagai line feed kosong sebelum `ESC @`).
+  /// Melempar [Exception] bila pengiriman gagal.
   Future<void> writeBytes(List<int> bytes) async {
-    const chunkSize = 2048;
-    for (var i = 0; i < bytes.length; i += chunkSize) {
-      final end = (i + chunkSize).clamp(0, bytes.length);
-      final ok =
-          await PrintBluetoothThermal.writeBytes(bytes.sublist(i, end));
-      if (!ok) {
-        throw Exception(
-          'Gagal mengirim data ke printer (byte ke-$i dari ${bytes.length}). '
-          'Periksa koneksi lalu coba lagi.',
-        );
-      }
+    final ok = await PrintBluetoothThermal.writeBytes(bytes);
+    if (!ok) {
+      throw Exception(
+        'Gagal mengirim ${bytes.length} byte ke printer. '
+        'Periksa koneksi lalu coba lagi.',
+      );
     }
   }
 }
