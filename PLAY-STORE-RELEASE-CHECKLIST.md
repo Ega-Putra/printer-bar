@@ -1,11 +1,11 @@
 # Checklist Rilis Play Store — Printer Bar (com.egaputra.thermal_print)
 
-Target: goal due 2026-10-20 23:59 UTC. Urutan kerja: QA v1.8 kelar → signing → listing → upload.
+Target: goal due 2026-10-20 23:59 UTC. Urutan kerja: QA v1.0.9 kelar → signing → listing → upload.
 Koreksi penting (verifikasi 2026-10-18): **"Production" tidak bisa tanggal 20 Okt.** Kalau akun developer kamu akun personal BARU (dibuat setelah 13 Nov 2023), Google mewajibkan **closed testing: minimal 12 tester opt-in terus-menerus selama 14 hari** SEBELUM tombol "apply for production" kebuka — internal testing TIDAK dihitung. Jadi target realistis 20 Okt = AAB signed + listing lengkap + closed test jalan dengan 12+ tester; Production = +14 hari + review Google (~7 hari). (Sumber: Play Console Help; dikecualikan kalau akunmu organisasi atau personal lama pra-Nov 2023 — cek dulu kamu masuk yang mana.)
 
 ## 1. Gerbang QA (di tangan kamu, sebelum signing)
 
-- [ ] Install v1.8, status barcode HIJAU "004614605180 (ditulis ulang tajam)" di resi test
+- [ ] Install v1.0.9, cek di Info Aplikasi tertulis 1.0.9 (bukan 1.0.8 — pelajaran drama cache 19 Okt), status barcode HIJAU "004614605180 (ditulis ulang tajam)" di resi test
 - [ ] Test print fisik: HP Xiaomi + printer RPP02N (cetak asli & barcode diperbesar)
 - [ ] Crop drag mulus, tab Cetak/Pengaturan via tombol saja
 
@@ -32,7 +32,7 @@ Koreksi penting (verifikasi 2026-10-18): **"Production" tidak bisa tanggal 20 Ok
 
 Status teknis terverifikasi (2026-10-18, dari repo):
 - targetSdk = 36 (default Flutter 3.47.7) ✓ — memenuhi syarat Play per 31 Agu 2026 (API 36 untuk aplikasi baru)
-- compileSdk = 37; applicationId = com.egaputra.thermal_print; version saat ini 1.0.8+9
+- compileSdk = 37; applicationId = com.egaputra.thermal_print; version saat ini 1.0.9+10 (versionCode 2010 untuk arm64)
 - AAB BELUM PERNAH dibuild (folder goal cuma berisi APK v1.2–v1.8); release build masih pakai debug signing → keystore wajib dibuat sebelum upload
 - Ikon: 3 opsi di `assets/icon-options/` (printer / receipt / barcode) + `assets/icon/icon.png` saat ini — keputusan final di tangan kamu
 

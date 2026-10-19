@@ -3,7 +3,9 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:image/image.dart' as img;
+import 'package:path_provider/path_provider.dart';
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 
 import '../models/paper_size.dart';
@@ -59,6 +61,16 @@ class _HomeScreenState extends State<HomeScreen>
 
   String? _pdfPath;
   String? _pdfName;
+
+  /// true bila sumber yang dimuat adalah gambar (bukan PDF) — render
+  /// ulang saat ganti kertas tidak diperlukan untuk gambar.
+  bool _sourceIsImage = false;
+
+  /// Rotasi per halaman dalam putaran 90° searah jarum jam (0..3).
+  /// Diterapkan ke byte gambar halaman (baked-in), sehingga pratinjau,
+  /// crop, deteksi, dan cetak semuanya melihat gambar yang sudah diputar.
+  final Map<int, int> _rotations = {};
+
   List<RenderedPage> _pages = [];
   int _previewIndex = 0;
   bool _loadingPdf = false;
@@ -261,6 +273,8 @@ class _HomeScreenState extends State<HomeScreen>
       setState(() {
         _pdfPath = path;
         _pdfName = name;
+        _sourceIsImage = false;
+        _rotations.clear();
         _pages = pages;
         _previewIndex = 0;
         _detections.clear();
@@ -295,9 +309,196 @@ class _HomeScreenState extends State<HomeScreen>
     }
   }
 
+  // ---------- Gambar ----------
+
+  /// Pilih berkas gambar (JPG/PNG) sebagai sumber resi. Gambar
+  /// diperlakukan sebagai SATU halaman dan melewati pipeline yang sama
+  /// persis seperti halaman PDF: pratinjau → crop → rotate → cetak.
+  Future<void> _pickImage() async {
+    if (_loadingPdf) return;
+    setState(() {
+      _loadingPdf = true;
+      _progress = 'Membuka pemilih berkas...';
+    });
+    try {
+      final files = await FilePicker.pickFiles(
+        type: FileType.image,
+      ).timeout(
+        const Duration(seconds: 60),
+        onTimeout: () => throw TimeoutException(
+          'Pemilih berkas tidak merespons dalam 60 detik.',
+        ),
+      );
+      if (files.isEmpty) {
+        // Pengguna batal.
+        if (mounted) {
+          setState(() {
+            _loadingPdf = false;
+            _progress = null;
+          });
+        }
+        return;
+      }
+      final file = files.first;
+      final Uint8List bytes;
+      final p = file.path;
+      if (p != null && File(p).existsSync()) {
+        bytes = await File(p).readAsBytes();
+      } else {
+        bytes = await file.readAsBytes();
+      }
+      if (bytes.isEmpty) {
+        throw Exception('Berkas gambar tidak bisa dibaca.');
+      }
+      if (mounted) setState(() => _loadingPdf = false);
+      await _loadImageFromBytes(bytes, file.name);
+    } on TimeoutException {
+      if (mounted) {
+        setState(() {
+          _loadingPdf = false;
+          _progress = null;
+        });
+        _snack(
+          'Pemilih berkas tidak merespons. Coba lagi.',
+          error: true,
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _loadingPdf = false;
+          _progress = null;
+        });
+        _snack('Gagal memuat gambar: ${_errMsg(e)}', error: true);
+      }
+    }
+  }
+
+  /// Muat [bytes] gambar sebagai satu halaman sumber.
+  Future<void> _loadImageFromBytes(Uint8List bytes, String name) async {
+    if (_loadingPdf) return;
+    setState(() {
+      _loadingPdf = true;
+      _progress = 'Memuat gambar...';
+    });
+    try {
+      late img.Image decoded;
+      try {
+        decoded = ImagePipeline.decode(bytes);
+      } catch (_) {
+        throw Exception('Berkas bukan gambar yang valid.');
+      }
+      // Normalisasi ke PNG + simpan ke cache agar deteksi barcode
+      // (yang bekerja via path berkas) bisa dipakai.
+      final png = Uint8List.fromList(img.encodePng(decoded));
+      final tmp = await getTemporaryDirectory();
+      final out = File(
+          '${tmp.path}/img_${DateTime.now().millisecondsSinceEpoch}.png');
+      await out.writeAsBytes(png, flush: true);
+      if (!mounted) return;
+      setState(() {
+        _pdfPath = out.path;
+        _pdfName = name;
+        _sourceIsImage = true;
+        _rotations.clear();
+        _pages = [
+          RenderedPage(
+            path: out.path,
+            width: decoded.width,
+            height: decoded.height,
+            bytes: png,
+          ),
+        ];
+        _previewIndex = 0;
+        _detections.clear();
+        _crops.clear();
+        _crops[0] = Box(
+          0,
+          0,
+          decoded.width.toDouble(),
+          decoded.height.toDouble(),
+        );
+      });
+      _tabController.animateTo(0);
+      if (_mode == PrintMode.barcodeDiperbesar) {
+        await _detectBarcodes();
+      } else {
+        _refreshPrintPreview();
+      }
+    } catch (e) {
+      _snack('Gagal memuat gambar: ${_errMsg(e)}', error: true);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _loadingPdf = false;
+          _progress = null;
+        });
+      }
+    }
+  }
+
+  /// Putar halaman pratinjau aktif 90° searah jarum jam. Rotasi di-bake
+  /// ke byte gambar halaman, sehingga pratinjau, crop, deteksi barcode,
+  /// dan hasil cetak semuanya konsisten.
+  Future<void> _rotatePreviewPage() async {
+    if (_pages.isEmpty || _loadingPdf) return;
+    final i = _previewIndex;
+    setState(() {
+      _loadingPdf = true;
+      _progress = 'Memutar gambar...';
+    });
+    try {
+      final page = _pages[i];
+      final rotated =
+          ImagePipeline.rotate90Clockwise(ImagePipeline.decode(page.bytes));
+      final png = Uint8List.fromList(img.encodePng(rotated));
+      final tmp = await getTemporaryDirectory();
+      final out = File(
+          '${tmp.path}/rot_${DateTime.now().millisecondsSinceEpoch}_p$i.png');
+      await out.writeAsBytes(png, flush: true);
+      if (!mounted) return;
+      setState(() {
+        _pages[i] = RenderedPage(
+          path: out.path,
+          width: rotated.width,
+          height: rotated.height,
+          bytes: png,
+        );
+        _crops[i] = Box(
+          0,
+          0,
+          rotated.width.toDouble(),
+          rotated.height.toDouble(),
+        );
+        _detections.remove(i);
+        _rotations[i] = ((_rotations[i] ?? 0) + 1) % 4;
+      });
+      if (_mode == PrintMode.barcodeDiperbesar) {
+        await _detectBarcodes();
+      } else {
+        _refreshPrintPreview();
+      }
+    } catch (e) {
+      _snack('Gagal memutar gambar: ${_errMsg(e)}', error: true);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _loadingPdf = false;
+          _progress = null;
+        });
+      }
+    }
+  }
+
   Future<void> _onPaperChanged(PaperSize paper) async {
     if (paper == _paper) return;
     setState(() => _paper = paper);
+    // Gambar tidak perlu di-render ulang (resolusinya tetap) — cukup
+    // hitung ulang pratinjau. PDF di-render ulang mengikuti kertas.
+    if (_sourceIsImage) {
+      _refreshPrintPreview();
+      return;
+    }
     // Resolusi render mengikuti ukuran kertas → render ulang bila PDF ada.
     final path = _pdfPath;
     final name = _pdfName;
@@ -640,6 +841,8 @@ class _HomeScreenState extends State<HomeScreen>
             _previewCard(),
             const SizedBox(height: 12),
             _printPreviewCard(),
+            const SizedBox(height: 12),
+            _printOptionsCard(),
           ],
           const SizedBox(height: 16),
           _printButton(),
@@ -664,7 +867,9 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  /// Tab "Pengaturan": kertas, mode cetak, dan koneksi printer.
+  /// Tab "Pengaturan": kertas, tinggi barcode, dan koneksi printer.
+  /// (Mode cetak / orientasi / dithering sudah pindah ke tab Cetak
+  /// sebagai tombol ikon kompak.)
   Widget _settingsTab() {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
@@ -672,14 +877,16 @@ class _HomeScreenState extends State<HomeScreen>
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _paperCard(),
-          const SizedBox(height: 12),
-          _modeCard(),
+          if (_mode == PrintMode.barcodeDiperbesar) ...[
+            const SizedBox(height: 12),
+            _barcodeHeightCard(),
+          ],
           const SizedBox(height: 12),
           _bluetoothCard(),
           const SizedBox(height: 24),
           const Center(
             child: Text(
-              'Printer Bar v1.0.8',
+              'Printer Bar v1.1.0',
               style: TextStyle(color: Colors.grey, fontSize: 12),
             ),
           ),
@@ -725,7 +932,7 @@ class _HomeScreenState extends State<HomeScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text('Resi PDF',
+            const Text('Sumber Resi',
                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
             const SizedBox(height: 4),
             Text(
@@ -733,15 +940,32 @@ class _HomeScreenState extends State<HomeScreen>
               style: Theme.of(context).textTheme.bodySmall,
             ),
             const SizedBox(height: 8),
-            OutlinedButton.icon(
-              onPressed: _loadingPdf ? null : _pickPdf,
-              icon: const Icon(Icons.picture_as_pdf),
-              label: const Text('Pilih PDF'),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _loadingPdf ? null : _pickPdf,
+                    icon: const Icon(Icons.picture_as_pdf),
+                    label: const Text('Pilih PDF'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _loadingPdf ? null : _pickImage,
+                    icon: const Icon(Icons.image),
+                    label: const Text('Pilih Gambar'),
+                  ),
+                ),
+              ],
             ),
             if (_pdfName != null) ...[
               const SizedBox(height: 8),
               Text('📄 $_pdfName'),
-              Text('${_pages.length} halaman',
+              Text(
+                  _sourceIsImage
+                      ? '1 gambar'
+                      : '${_pages.length} halaman',
                   style: Theme.of(context).textTheme.bodySmall),
             ],
           ],
@@ -766,6 +990,14 @@ class _HomeScreenState extends State<HomeScreen>
                     style:
                         TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                 const Spacer(),
+                // Putar 90° searah jarum jam (berlaku untuk PDF & gambar).
+                TextButton.icon(
+                  onPressed:
+                      (_loadingPdf || _pages.isEmpty) ? null : _rotatePreviewPage,
+                  icon: const Icon(Icons.rotate_right, size: 18),
+                  label: Text(
+                      '${((_rotations[_previewIndex] ?? 0) * 90)}°'),
+                ),
                 TextButton.icon(
                   onPressed: _resetCrop,
                   icon: const Icon(Icons.crop_free, size: 18),
@@ -774,8 +1006,7 @@ class _HomeScreenState extends State<HomeScreen>
               ],
             ),
             const Text(
-              'Seret sudut untuk ubah area • seret tengah untuk pindah • '
-              'seret di luar kotak untuk gambar baru',
+              'Seret sudut/sisi untuk ubah area • seret tengah untuk pindah',
               style: TextStyle(fontSize: 12, color: Colors.grey),
             ),
             const SizedBox(height: 8),
@@ -950,104 +1181,139 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  Widget _modeCard() {
+  /// Opsi cetak kompak: deretan tombol ikon kecil (mode cetak,
+  /// orientasi barcode, dithering) — hemat ruang scroll vertikal.
+  Widget _printOptionsCard() {
+    final scheme = Theme.of(context).colorScheme;
+
+    Widget toggle({
+      required IconData icon,
+      required String label,
+      required String tooltip,
+      required bool selected,
+      required VoidCallback onTap,
+    }) {
+      final fg = selected ? scheme.onPrimary : scheme.onSurfaceVariant;
+      final bg = selected ? scheme.primary : scheme.surfaceContainerHighest;
+      return Tooltip(
+        message: tooltip,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            padding:
+                const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: bg,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, size: 22, color: fg),
+                const SizedBox(height: 2),
+                Text(label,
+                    style: TextStyle(fontSize: 10, color: fg)),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(8),
+        padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Padding(
-              padding: EdgeInsets.fromLTRB(8, 8, 8, 0),
-              child: Text('Mode Cetak',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            ),
-            RadioGroup<PrintMode>(
-              groupValue: _mode,
-              onChanged: (v) => v != null ? _onModeChanged(v) : null,
-              child: Column(
-                children: [
-                  RadioListTile<PrintMode>(
-                    title: const Text('Cetak asli'),
-                    subtitle:
-                        const Text('Cetak resi apa adanya selebar kertas'),
-                    value: PrintMode.asli,
+            const Text('Opsi Cetak',
+                style:
+                    TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+            const SizedBox(height: 8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                toggle(
+                  icon: Icons.receipt_long,
+                  label: 'Asli',
+                  tooltip: 'Cetak asli: resi apa adanya selebar kertas',
+                  selected: _mode == PrintMode.asli,
+                  onTap: () => _onModeChanged(PrintMode.asli),
+                ),
+                toggle(
+                  icon: Icons.qr_code,
+                  label: 'Barcode',
+                  tooltip:
+                      'Barcode diperbesar: barcode terbesar dicetak ulang selebar kertas di bawah resi',
+                  selected: _mode == PrintMode.barcodeDiperbesar,
+                  onTap: () => _onModeChanged(PrintMode.barcodeDiperbesar),
+                ),
+                if (_mode == PrintMode.barcodeDiperbesar) ...[
+                  toggle(
+                    icon: Icons.more_horiz,
+                    label: 'Horisontal',
+                    tooltip: 'Barcode horizontal',
+                    selected: !_barcodeVertical,
+                    onTap: () {
+                      setState(() => _barcodeVertical = false);
+                      _refreshPrintPreview();
+                    },
                   ),
-                  RadioListTile<PrintMode>(
-                    title: const Text('Barcode diperbesar'),
-                    subtitle: const Text(
-                        'Barcode terbesar tiap halaman dicetak ulang selebar kertas di bawah resi'),
-                    value: PrintMode.barcodeDiperbesar,
+                  toggle(
+                    icon: Icons.more_vert,
+                    label: 'Vertikal',
+                    tooltip: 'Barcode vertikal (diputar 90°)',
+                    selected: _barcodeVertical,
+                    onTap: () {
+                      setState(() => _barcodeVertical = true);
+                      _refreshPrintPreview();
+                    },
                   ),
                 ],
+                toggle(
+                  icon: Icons.gradient,
+                  label: 'Dither',
+                  tooltip:
+                      'Dithering: foto & gambar bergradasi tercetak lebih halus',
+                  selected: _dithering,
+                  onTap: () {
+                    setState(() => _dithering = !_dithering);
+                    _refreshPrintPreview();
+                  },
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Slider tinggi barcode (ramping) — tetap di Pengaturan karena
+  /// hanya relevan untuk mode "Barcode diperbesar".
+  Widget _barcodeHeightCard() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+        child: Row(
+          children: [
+            const Text('Tinggi barcode:'),
+            Expanded(
+              child: Slider(
+                value: _barcodeHeightMm,
+                min: 10,
+                max: 50,
+                divisions: 8,
+                label: '${_barcodeHeightMm.round()} mm',
+                onChanged: (v) => setState(() => _barcodeHeightMm = v),
+                onChangeEnd: (_) => _refreshPrintPreview(),
               ),
             ),
-            if (_mode == PrintMode.barcodeDiperbesar) ...[
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
-                // Wrap (bukan Row) agar tak pernah overflow di layar sempit.
-                child: Wrap(
-                  spacing: 8,
-                  runSpacing: 4,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    const Text('Orientasi barcode:'),
-                    ChoiceChip(
-                      label: const Text('Horizontal'),
-                      avatar: const Icon(Icons.more_horiz, size: 18),
-                      selected: !_barcodeVertical,
-                      onSelected: (_) {
-                        setState(() => _barcodeVertical = false);
-                        _refreshPrintPreview();
-                      },
-                    ),
-                    ChoiceChip(
-                      label: const Text('Vertikal'),
-                      avatar: const Icon(Icons.more_vert, size: 18),
-                      selected: _barcodeVertical,
-                      onSelected: (_) {
-                        setState(() => _barcodeVertical = true);
-                        _refreshPrintPreview();
-                      },
-                    ),
-                  ],
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                child: Row(
-                  children: [
-                    const Text('Tinggi barcode:'),
-                    Expanded(
-                      child: Slider(
-                        value: _barcodeHeightMm,
-                        min: 10,
-                        max: 50,
-                        divisions: 8,
-                        label: '${_barcodeHeightMm.round()} mm',
-                        onChanged: (v) =>
-                            setState(() => _barcodeHeightMm = v),
-                        onChangeEnd: (_) => _refreshPrintPreview(),
-                      ),
-                    ),
-                    SizedBox(
-                      width: 52,
-                      child: Text('${_barcodeHeightMm.round()} mm',
-                          textAlign: TextAlign.end),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-            SwitchListTile(
-              title: const Text('Dithering (untuk foto)'),
-              subtitle: const Text(
-                  'Foto & gambar bergradasi tercetak lebih halus'),
-              value: _dithering,
-              onChanged: (v) {
-                setState(() => _dithering = v);
-                _refreshPrintPreview();
-              },
+            SizedBox(
+              width: 52,
+              child: Text('${_barcodeHeightMm.round()} mm',
+                  textAlign: TextAlign.end),
             ),
           ],
         ),

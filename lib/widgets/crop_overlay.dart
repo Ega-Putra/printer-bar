@@ -6,8 +6,9 @@ import 'package:flutter/material.dart';
 import '../services/image_pipeline.dart';
 
 /// Editor crop: menampilkan gambar + overlay persegi yang bisa
-/// digeser (seret bagian tengah) dan diubah ukurannya (seret sudut).
-/// Seret di luar kotak untuk menggambar kotak baru.
+/// digeser (seret bagian tengah) dan diubah ukurannya (seret sudut
+/// atau sisi). Tap di area kosong TIDAK melakukan apa-apa — kotak
+/// hanya berubah lewat drag.
 ///
 /// [box] dalam koordinat piksel gambar asli. [onBoxChanged] dipanggil
 /// setiap ada perubahan selama gesture.
@@ -37,7 +38,63 @@ class CropEditor extends StatefulWidget {
   State<CropEditor> createState() => _CropEditorState();
 }
 
-enum _DragMode { none, move, corner0, corner1, corner2, corner3, draw }
+enum _DragMode {
+  none,
+  move,
+  corner0,
+  corner1,
+  corner2,
+  corner3,
+  edgeTop,
+  edgeBottom,
+  edgeLeft,
+  edgeRight,
+}
+
+/// Hasil hit-test pointer terhadap kotak crop (koordinat layar).
+enum CropHit {
+  none,
+  move,
+  cornerTL,
+  cornerTR,
+  cornerBR,
+  cornerBL,
+  edgeTop,
+  edgeRight,
+  edgeBottom,
+  edgeLeft,
+}
+
+/// Murni & unit-testable: tentukan bagian kotak crop mana yang disentuh
+/// [p] (koordinat layar). [corners] = 4 sudut dalam urutan TL, TR, BR, BL
+/// (koordinat layar). Prioritas: sudut > sisi > dalam kotak > tidak ada.
+CropHit hitTestCrop(Offset p, List<Offset> corners, double hitRadius) {
+  assert(corners.length == 4);
+  const cornerHits = [
+    CropHit.cornerTL,
+    CropHit.cornerTR,
+    CropHit.cornerBR,
+    CropHit.cornerBL,
+  ];
+  for (var i = 0; i < 4; i++) {
+    if ((p - corners[i]).distance <= hitRadius) return cornerHits[i];
+  }
+  final tl = corners[0], tr = corners[1], br = corners[2], bl = corners[3];
+  final edges = [
+    MapEntry(CropHit.edgeTop, (tl + tr) / 2),
+    MapEntry(CropHit.edgeRight, (tr + br) / 2),
+    MapEntry(CropHit.edgeBottom, (bl + br) / 2),
+    MapEntry(CropHit.edgeLeft, (tl + bl) / 2),
+  ];
+  for (final e in edges) {
+    if ((p - e.value).distance <= hitRadius) return e.key;
+  }
+  final inside = p.dx >= tl.dx &&
+      p.dx <= br.dx &&
+      p.dy >= tl.dy &&
+      p.dy <= br.dy;
+  return inside ? CropHit.move : CropHit.none;
+}
 
 class _CropEditorState extends State<CropEditor> {
   /// Box live dalam koordinat piksel gambar.
@@ -48,7 +105,6 @@ class _CropEditorState extends State<CropEditor> {
   Offset _grabOffset = Offset.zero;
   Offset _moveAnchor = Offset.zero;
   Box _moveStart = const Box(0, 0, 0, 0);
-  Offset _drawAnchor = Offset.zero;
 
   // Pemetaan gambar -> layar, dihitung tiap build.
   double _scale = 1;
@@ -96,13 +152,6 @@ class _CropEditorState extends State<CropEditor> {
         _toDisplay(Offset(_live.left, _live.bottom)),
       ];
 
-  Box _normalized(Offset a, Offset b) => Box(
-        math.min(a.dx, b.dx),
-        math.min(a.dy, b.dy),
-        math.max(a.dx, b.dx),
-        math.max(a.dy, b.dy),
-      );
-
   Box _resizeCorner(int corner, Offset imgPt) {
     var l = _live.left, t = _live.top, r = _live.right, b = _live.bottom;
     switch (corner) {
@@ -127,33 +176,58 @@ class _CropEditorState extends State<CropEditor> {
     );
   }
 
+  /// Resize satu sisi kotak ([mode] = edgeTop/Bottom/Left/Right).
+  Box _resizeEdge(_DragMode mode, Offset imgPt) {
+    var l = _live.left, t = _live.top, r = _live.right, b = _live.bottom;
+    switch (mode) {
+      case _DragMode.edgeTop:
+        t = math.min(imgPt.dy, b - _minBox);
+      case _DragMode.edgeBottom:
+        b = math.max(imgPt.dy, t + _minBox);
+      case _DragMode.edgeLeft:
+        l = math.min(imgPt.dx, r - _minBox);
+      case _DragMode.edgeRight:
+        r = math.max(imgPt.dx, l + _minBox);
+      default:
+        break;
+    }
+    return Box(
+      l.clamp(0.0, _iw.toDouble()),
+      t.clamp(0.0, _ih.toDouble()),
+      r.clamp(0.0, _iw.toDouble()),
+      b.clamp(0.0, _ih.toDouble()),
+    );
+  }
+
   void _onPointerDown(PointerDownEvent e) {
     final p = e.localPosition;
     final corners = _cornersDisplay();
-    for (var i = 0; i < 4; i++) {
-      if ((p - corners[i]).distance <= _hitRadius) {
+    final hit = hitTestCrop(p, corners, _hitRadius);
+    switch (hit) {
+      case CropHit.none:
+        // Tap di area kosong: SENGAJA tidak melakukan apa-apa.
+        // (Dulu: menggambar kotak baru → sering kepencet tak sengaja.)
+        _mode = _DragMode.none;
+        return;
+      case CropHit.move:
+        _mode = _DragMode.move;
+        _moveAnchor = p;
+        _moveStart = _live;
+      case CropHit.cornerTL:
+      case CropHit.cornerTR:
+      case CropHit.cornerBR:
+      case CropHit.cornerBL:
+        final i = hit.index - CropHit.cornerTL.index;
         _mode = _DragMode.values[_DragMode.corner0.index + i];
         _grabOffset = corners[i] - p;
-        widget.onDragging?.call(true);
-        return;
-      }
-    }
-    final tl = corners[0];
-    final br = corners[2];
-    final inside = p.dx >= tl.dx &&
-        p.dx <= br.dx &&
-        p.dy >= tl.dy &&
-        p.dy <= br.dy;
-    if (inside) {
-      _mode = _DragMode.move;
-      _moveAnchor = p;
-      _moveStart = _live;
-    } else {
-      _mode = _DragMode.draw;
-      _drawAnchor = _clampImage(_toImage(p));
-      _live = Box(
-          _drawAnchor.dx, _drawAnchor.dy, _drawAnchor.dx, _drawAnchor.dy);
-      _notify();
+      case CropHit.edgeTop:
+        _mode = _DragMode.edgeTop;
+      case CropHit.edgeBottom:
+        _mode = _DragMode.edgeBottom;
+      case CropHit.edgeLeft:
+        _mode = _DragMode.edgeLeft;
+      case CropHit.edgeRight:
+        _mode = _DragMode.edgeRight;
     }
     widget.onDragging?.call(true);
   }
@@ -179,8 +253,11 @@ class _CropEditorState extends State<CropEditor> {
       case _DragMode.corner3:
         final corner = _mode.index - _DragMode.corner0.index;
         _live = _resizeCorner(corner, _clampImage(_toImage(p + _grabOffset)));
-      case _DragMode.draw:
-        _live = _normalized(_drawAnchor, _clampImage(_toImage(p)));
+      case _DragMode.edgeTop:
+      case _DragMode.edgeBottom:
+      case _DragMode.edgeLeft:
+      case _DragMode.edgeRight:
+        _live = _resizeEdge(_mode, _clampImage(_toImage(p)));
     }
     _notify();
   }
@@ -283,19 +360,24 @@ class _CropPainter extends CustomPainter {
         ..strokeWidth = 2
         ..color = Colors.white,
     );
-    // Handle sudut.
+    // Handle sudut + handle tengah sisi.
     const hs = 16.0;
     final fill = Paint()..color = Colors.white;
     final stroke = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.5
       ..color = Colors.black87;
-    for (final c in [
+    final handles = [
       box.topLeft,
       box.topRight,
       box.bottomRight,
       box.bottomLeft,
-    ]) {
+      box.topCenter,
+      box.centerRight,
+      box.bottomCenter,
+      box.centerLeft,
+    ];
+    for (final c in handles) {
       final r = Rect.fromCenter(center: c, width: hs, height: hs);
       canvas.drawRect(r, fill);
       canvas.drawRect(r, stroke);
