@@ -17,7 +17,7 @@ Koreksi penting (verifikasi 2026-10-18): **"Production" tidak bisa tanggal 20 Ok
 
 ## 3. Akun & listing Play Console
 
-- [ ] Akun developer Google Play (sekali bayar $25 — cek dulu kamu sudah punya atau belum)
+- [x] Akun developer Google Play (sekali bayar $25 — **sudah punya, dikonfirmasi ega 2026-10-19**; tinggal upload)
 - [ ] Nama aplikasi, deskripsi singkat + lengkap (ID), kategori, email kontak
 - [ ] Ikon: 512x512 (pilih dari 3 opsi yang kemarin — belum ada keputusan final)
 - [ ] Feature graphic 1024x500 + minimal 2 screenshot HP
