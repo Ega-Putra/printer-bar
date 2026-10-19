@@ -7,6 +7,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:image/image.dart' as img;
 import 'package:path_provider/path_provider.dart';
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../models/paper_size.dart';
 import '../services/barcode_service.dart';
@@ -949,10 +950,12 @@ class _HomeScreenState extends State<HomeScreen>
           _paperCard(),
           const SizedBox(height: 12),
           _bluetoothCard(),
+          const SizedBox(height: 12),
+          _aboutCard(),
           const SizedBox(height: 24),
           const Center(
             child: Text(
-              'Printer Bar v1.1.2',
+              'Printer Bar v1.1.4',
               style: TextStyle(color: Colors.grey, fontSize: 12),
             ),
           ),
@@ -960,6 +963,30 @@ class _HomeScreenState extends State<HomeScreen>
         ],
       ),
     );
+  }
+
+  /// Kartu "Tentang": tautan kebijakan privasi (wajib untuk listing Play Store).
+  Widget _aboutCard() {
+    return Card(
+      child: ListTile(
+        leading: const Icon(Icons.privacy_tip_outlined),
+        title: const Text('Kebijakan Privasi'),
+        subtitle: const Text('Bagaimana aplikasi ini menangani data Anda'),
+        trailing: const Icon(Icons.open_in_new, size: 18),
+        onTap: _openPrivacyPolicy,
+      ),
+    );
+  }
+
+  Future<void> _openPrivacyPolicy() async {
+    final uri =
+        Uri.parse('https://ega-putra.github.io/printer-bar/privacy.html');
+    final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!ok && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Tidak bisa membuka kebijakan privasi')),
+      );
+    }
   }
 
   Widget _paperCard() {
