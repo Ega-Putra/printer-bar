@@ -27,6 +27,23 @@ enum PrintMode {
   barcodeDiperbesar,
 }
 
+/// Dimensi + path ASLI (belum diputar) sebuah halaman.
+///
+/// Deteksi barcode selalu dijalankan pada gambar asli; saat pengguna
+/// memutar, bbox hasil deteksi di-transform matematis (lihat
+/// [ImagePipeline.rotateBox]) mengikuti rotasi — tidak pernah
+/// dideteksi ulang pada gambar putaran.
+class _OriginalPage {
+  final String path;
+  final int width;
+  final int height;
+  const _OriginalPage({
+    required this.path,
+    required this.width,
+    required this.height,
+  });
+}
+
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -67,9 +84,19 @@ class _HomeScreenState extends State<HomeScreen>
   bool _sourceIsImage = false;
 
   /// Rotasi per halaman dalam putaran 90° searah jarum jam (0..3).
-  /// Diterapkan ke byte gambar halaman (baked-in), sehingga pratinjau,
-  /// crop, deteksi, dan cetak semuanya melihat gambar yang sudah diputar.
+  /// Diterapkan ke byte gambar halaman (baked-in) untuk pratinjau &
+  /// cetak. DETEKSI barcode tidak ikut: ia selalu memakai gambar asli
+  /// (lihat [_originals]) dan bbox-nya di-transform matematis.
   final Map<int, int> _rotations = {};
+
+  /// Gambar asli (belum diputar) per halaman — hanya terisi bila
+  /// halaman pernah diputar. Kunci deteksi barcode yang stabil.
+  final Map<int, _OriginalPage> _originals = {};
+
+  /// ScrollController tetap agar posisi scroll TIDAK me-reset ke atas
+  /// setiap setState (mis. saat tombol rotate ditekan).
+  late final ScrollController _printScrollController;
+  late final ScrollController _settingsScrollController;
 
   List<RenderedPage> _pages = [];
   int _previewIndex = 0;
@@ -113,6 +140,8 @@ class _HomeScreenState extends State<HomeScreen>
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    _printScrollController = ScrollController();
+    _settingsScrollController = ScrollController();
     // PDF yang di-share dari aplikasi lain saat aplikasi sudah jalan.
     _intentSub = ReceiveSharingIntent.instance.getMediaStream().listen(
       _handleSharedFiles,
@@ -129,6 +158,8 @@ class _HomeScreenState extends State<HomeScreen>
   @override
   void dispose() {
     _tabController.dispose();
+    _printScrollController.dispose();
+    _settingsScrollController.dispose();
     _intentSub?.cancel();
     _discoverySub?.cancel();
     _scanTimer?.cancel();
@@ -138,14 +169,31 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   /// Deteksi efektif untuk halaman [pageIndex]: hasil deteksi yang sudah
-  /// digeser ke koordinat gambar ter-crop. Null bila halaman tak punya
-  /// barcode ATAU barcode-nya di luar area crop.
+  /// di-transform mengikuti rotasi halaman, lalu digeser ke koordinat
+  /// gambar ter-crop. Null bila halaman tak punya barcode ATAU
+  /// barcode-nya di luar area crop.
+  ///
+  /// Deteksi selalu dalam koordinat gambar ASLI ([_originals]); bila
+  /// halaman diputar, bbox dihitung ulang secara matematis via
+  /// [ImagePipeline.rotateBox] — tidak pernah dideteksi ulang.
   DetectedBarcode? _effectiveDetection(int pageIndex) {
     final det = _detections[pageIndex];
     if (det == null) return null;
+    final turns = _rotations[pageIndex] ?? 0;
+    final orig = _originals[pageIndex];
+    final Box rotatedBox;
+    if (orig != null && turns % 4 != 0) {
+      rotatedBox =
+          ImagePipeline.rotateBox(det.box, turns, orig.width, orig.height);
+    } else {
+      rotatedBox = det.box;
+    }
     final crop = _crops[pageIndex];
-    if (crop == null) return det;
-    final tb = ImagePipeline.translateBox(det.box, crop);
+    if (crop == null) {
+      return DetectedBarcode(
+          box: rotatedBox, rawValue: det.rawValue, format: det.format);
+    }
+    final tb = ImagePipeline.translateBox(rotatedBox, crop);
     if (tb == null) return null;
     return DetectedBarcode(
         box: tb, rawValue: det.rawValue, format: det.format);
@@ -275,6 +323,7 @@ class _HomeScreenState extends State<HomeScreen>
         _pdfName = name;
         _sourceIsImage = false;
         _rotations.clear();
+        _originals.clear();
         _pages = pages;
         _previewIndex = 0;
         _detections.clear();
@@ -401,6 +450,7 @@ class _HomeScreenState extends State<HomeScreen>
         _pdfName = name;
         _sourceIsImage = true;
         _rotations.clear();
+        _originals.clear();
         _pages = [
           RenderedPage(
             path: out.path,
@@ -438,8 +488,11 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   /// Putar halaman pratinjau aktif 90° searah jarum jam. Rotasi di-bake
-  /// ke byte gambar halaman, sehingga pratinjau, crop, deteksi barcode,
-  /// dan hasil cetak semuanya konsisten.
+  /// ke byte gambar halaman untuk pratinjau & cetak, TAPI deteksi
+  /// barcode TIDAK ikut: ia tetap memakai gambar asli ([_originals])
+  /// dan bbox-nya di-transform matematis (lihat [_effectiveDetection]).
+  /// Deteksi ulang pada gambar putaran sering gagal ("tidak ketemu"),
+  /// jadi tidak pernah dilakukan.
   Future<void> _rotatePreviewPage() async {
     if (_pages.isEmpty || _loadingPdf) return;
     final i = _previewIndex;
@@ -449,6 +502,12 @@ class _HomeScreenState extends State<HomeScreen>
     });
     try {
       final page = _pages[i];
+      // Simpan gambar asli SEKALI (untuk deteksi barcode yang stabil).
+      _originals.putIfAbsent(
+        i,
+        () => _OriginalPage(
+            path: page.path, width: page.width, height: page.height),
+      );
       final rotated =
           ImagePipeline.rotate90Clockwise(ImagePipeline.decode(page.bytes));
       final png = Uint8List.fromList(img.encodePng(rotated));
@@ -470,14 +529,11 @@ class _HomeScreenState extends State<HomeScreen>
           rotated.width.toDouble(),
           rotated.height.toDouble(),
         );
-        _detections.remove(i);
         _rotations[i] = ((_rotations[i] ?? 0) + 1) % 4;
       });
-      if (_mode == PrintMode.barcodeDiperbesar) {
-        await _detectBarcodes();
-      } else {
-        _refreshPrintPreview();
-      }
+      // SENGAJA tidak memanggil _detectBarcodes(): deteksi tetap pada
+      // gambar asli; _effectiveDetection mentransform bbox-nya.
+      _refreshPrintPreview();
     } catch (e) {
       _snack('Gagal memutar gambar: ${_errMsg(e)}', error: true);
     } finally {
@@ -540,16 +596,21 @@ class _HomeScreenState extends State<HomeScreen>
     }
   }
 
+  /// Jalankan deteksi barcode pada gambar ASLI tiap halaman yang belum
+  /// terdeteksi. Tidak pernah dijalankan pada gambar yang sudah diputar
+  /// (lihat [_rotatePreviewPage]).
   Future<void> _detectBarcodes() async {
     setState(() {
       _detecting = true;
-      _detections.clear();
     });
     try {
       for (var i = 0; i < _pages.length; i++) {
+        if (_detections.containsKey(i)) continue; // sudah ada: jangan ulang
+        // Selalu deteksi pada gambar asli, bukan hasil putaran.
+        final srcPath = _originals[i]?.path ?? _pages[i].path;
         List<DetectedBarcode> found;
         try {
-          found = await _barcodes.detect(_pages[i].path);
+          found = await _barcodes.detect(srcPath);
         } catch (e) {
           if (!mounted) return;
           _snack('Deteksi barcode halaman ${i + 1} gagal: ${_errMsg(e)}',
@@ -560,7 +621,7 @@ class _HomeScreenState extends State<HomeScreen>
         var best = _barcodes.largest(found);
         // Kotak ketemu tapi nilai tak terbaca ML Kit -> coba decode manual.
         if (best != null && best.rawValue == null) {
-          best = await _barcodes.decodeValue(_pages[i].path, best) ?? best;
+          best = await _barcodes.decodeValue(srcPath, best) ?? best;
         }
         if (!mounted) return;
         setState(() => _detections[i] = best);
@@ -829,6 +890,8 @@ class _HomeScreenState extends State<HomeScreen>
   /// Tab "Cetak": pilih PDF -> atur crop -> pratinjau -> cetak.
   Widget _printTab() {
     return SingleChildScrollView(
+      key: const PageStorageKey('printTab'),
+      controller: _printScrollController,
       physics:
           _cropDragging ? const NeverScrollableScrollPhysics() : null,
       padding: const EdgeInsets.all(16),
@@ -843,6 +906,10 @@ class _HomeScreenState extends State<HomeScreen>
             _printPreviewCard(),
             const SizedBox(height: 12),
             _printOptionsCard(),
+            if (_mode == PrintMode.barcodeDiperbesar) ...[
+              const SizedBox(height: 12),
+              _barcodeHeightCard(),
+            ],
           ],
           const SizedBox(height: 16),
           _printButton(),
@@ -867,26 +934,24 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  /// Tab "Pengaturan": kertas, tinggi barcode, dan koneksi printer.
-  /// (Mode cetak / orientasi / dithering sudah pindah ke tab Cetak
-  /// sebagai tombol ikon kompak.)
+  /// Tab "Pengaturan": kertas dan koneksi printer.
+  /// (Mode cetak / orientasi / dithering / tinggi barcode sudah pindah
+  /// ke tab Cetak sebagai kontrol kompak.)
   Widget _settingsTab() {
     return SingleChildScrollView(
+      key: const PageStorageKey('settingsTab'),
+      controller: _settingsScrollController,
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _paperCard(),
-          if (_mode == PrintMode.barcodeDiperbesar) ...[
-            const SizedBox(height: 12),
-            _barcodeHeightCard(),
-          ],
           const SizedBox(height: 12),
           _bluetoothCard(),
           const SizedBox(height: 24),
           const Center(
             child: Text(
-              'Printer Bar v1.1.0',
+              'Printer Bar v1.1.1',
               style: TextStyle(color: Colors.grey, fontSize: 12),
             ),
           ),
@@ -1181,45 +1246,75 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  /// Opsi cetak kompak: deretan tombol ikon kecil (mode cetak,
-  /// orientasi barcode, dithering) — hemat ruang scroll vertikal.
+  /// Opsi cetak kompak: deretan tombol ikon BERUKURAN TETAP pada posisi
+  /// tetap (tidak pernah bergeser/hilang — yang tak berlaku tampil
+  /// redup/nonaktif). Satu tombol toggle untuk orientasi barcode yang
+  /// ikonnya ikut berubah mengikuti orientasi aktif.
   Widget _printOptionsCard() {
     final scheme = Theme.of(context).colorScheme;
+    final inBarcodeMode = _mode == PrintMode.barcodeDiperbesar;
 
     Widget toggle({
-      required IconData icon,
+      required Widget icon,
       required String label,
       required String tooltip,
       required bool selected,
-      required VoidCallback onTap,
+      required VoidCallback? onTap,
     }) {
+      final enabled = onTap != null;
       final fg = selected ? scheme.onPrimary : scheme.onSurfaceVariant;
       final bg = selected ? scheme.primary : scheme.surfaceContainerHighest;
-      return Tooltip(
-        message: tooltip,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(12),
-          child: Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: BoxDecoration(
-              color: bg,
+      // Lebar TETAP agar tombol tidak pernah bergeser posisi.
+      return SizedBox(
+        width: 76,
+        child: Tooltip(
+          message: tooltip,
+          child: Opacity(
+            opacity: enabled ? 1.0 : 0.4,
+            child: InkWell(
+              onTap: onTap,
               borderRadius: BorderRadius.circular(12),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(icon, size: 22, color: fg),
-                const SizedBox(height: 2),
-                Text(label,
-                    style: TextStyle(fontSize: 10, color: fg)),
-              ],
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+                decoration: BoxDecoration(
+                  color: bg,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    icon,
+                    const SizedBox(height: 2),
+                    Text(label,
+                        style: TextStyle(fontSize: 10, color: fg),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis),
+                  ],
+                ),
+              ),
             ),
           ),
         ),
       );
     }
+
+    Widget tIcon(IconData d, Color c) => Icon(d, size: 22, color: c);
+
+    // Ikon orientasi: barcode horizontal = bilah vertikal; saat mode
+    // vertikal ikonnya diputar 90° sehingga ikut menampilkan bilah
+    // horizontal. Satu tombol toggle, bukan dua tombol terpisah.
+    final orientIcon = RotatedBox(
+      quarterTurns: _barcodeVertical ? 1 : 0,
+      child: tIcon(
+        Icons.view_week,
+        inBarcodeMode
+            ? (_barcodeVertical
+                ? scheme.onPrimary
+                : scheme.onSurfaceVariant)
+            : scheme.onSurfaceVariant,
+      ),
+    );
 
     return Card(
       child: Padding(
@@ -1235,44 +1330,52 @@ class _HomeScreenState extends State<HomeScreen>
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
                 toggle(
-                  icon: Icons.receipt_long,
+                  icon: tIcon(
+                    Icons.receipt_long,
+                    _mode == PrintMode.asli
+                        ? scheme.onPrimary
+                        : scheme.onSurfaceVariant,
+                  ),
                   label: 'Asli',
                   tooltip: 'Cetak asli: resi apa adanya selebar kertas',
                   selected: _mode == PrintMode.asli,
                   onTap: () => _onModeChanged(PrintMode.asli),
                 ),
                 toggle(
-                  icon: Icons.qr_code,
+                  icon: tIcon(
+                    Icons.qr_code,
+                    inBarcodeMode
+                        ? scheme.onPrimary
+                        : scheme.onSurfaceVariant,
+                  ),
                   label: 'Barcode',
                   tooltip:
                       'Barcode diperbesar: barcode terbesar dicetak ulang selebar kertas di bawah resi',
-                  selected: _mode == PrintMode.barcodeDiperbesar,
+                  selected: inBarcodeMode,
                   onTap: () => _onModeChanged(PrintMode.barcodeDiperbesar),
                 ),
-                if (_mode == PrintMode.barcodeDiperbesar) ...[
-                  toggle(
-                    icon: Icons.more_horiz,
-                    label: 'Horisontal',
-                    tooltip: 'Barcode horizontal',
-                    selected: !_barcodeVertical,
-                    onTap: () {
-                      setState(() => _barcodeVertical = false);
-                      _refreshPrintPreview();
-                    },
-                  ),
-                  toggle(
-                    icon: Icons.more_vert,
-                    label: 'Vertikal',
-                    tooltip: 'Barcode vertikal (diputar 90°)',
-                    selected: _barcodeVertical,
-                    onTap: () {
-                      setState(() => _barcodeVertical = true);
-                      _refreshPrintPreview();
-                    },
-                  ),
-                ],
                 toggle(
-                  icon: Icons.gradient,
+                  icon: orientIcon,
+                  label: _barcodeVertical ? 'Vertikal' : 'Horisontal',
+                  tooltip: _barcodeVertical
+                      ? 'Barcode vertikal (diputar 90°) — ketuk untuk horizontal'
+                      : 'Barcode horizontal — ketuk untuk vertikal',
+                  selected: inBarcodeMode && _barcodeVertical,
+                  onTap: inBarcodeMode
+                      ? () {
+                          setState(
+                              () => _barcodeVertical = !_barcodeVertical);
+                          _refreshPrintPreview();
+                        }
+                      : null,
+                ),
+                toggle(
+                  icon: tIcon(
+                    Icons.gradient,
+                    _dithering
+                        ? scheme.onPrimary
+                        : scheme.onSurfaceVariant,
+                  ),
                   label: 'Dither',
                   tooltip:
                       'Dithering: foto & gambar bergradasi tercetak lebih halus',
@@ -1290,8 +1393,8 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  /// Slider tinggi barcode (ramping) — tetap di Pengaturan karena
-  /// hanya relevan untuk mode "Barcode diperbesar".
+  /// Slider tinggi barcode — di tab Cetak, di bawah kartu Opsi Cetak;
+  /// hanya tampil pada mode "Barcode diperbesar".
   Widget _barcodeHeightCard() {
     return Card(
       child: Padding(

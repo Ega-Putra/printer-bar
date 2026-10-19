@@ -109,6 +109,30 @@ class ImagePipeline {
     return img.copyRotate(src, angle: 90);
   }
 
+  /// Putar [box] 90° searah jarum jam sebanyak [turns] (dinormalisasi
+  /// ke 0..3). [w]/[h] = dimensi gambar ASAL (sebelum diputar).
+  ///
+  /// Dipakai agar deteksi barcode cukup dijalankan SEKALI pada gambar
+  /// asli: kotaknya di-transform matematis mengikuti rotasi tampilan,
+  /// bukan dideteksi ulang pada gambar yang sudah diputar (ML Kit
+  /// sering gagal pada gambar putaran).
+  ///
+  /// Rumus 90° CW: titik (x, y) dalam W×H → (H − y, x) dalam H×W,
+  /// sehingga Box(l, t, r, b) → Box(H − b, l, H − t, r).
+  static Box rotateBox(Box box, int turns, int w, int h) {
+    var b = box;
+    var cw = w;
+    var ch = h;
+    final n = ((turns % 4) + 4) % 4;
+    for (var i = 0; i < n; i++) {
+      b = Box(ch - b.bottom, b.left, ch - b.top, b.right);
+      final t = cw;
+      cw = ch;
+      ch = t;
+    }
+    return b;
+  }
+
   /// Letakkan [src] di tengah kanvas putih selebar [targetWidth]
   /// (tinggi tetap). Dipakai setelah rotasi barcode vertikal.
   ///
