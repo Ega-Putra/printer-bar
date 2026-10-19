@@ -38,4 +38,46 @@ void main() {
     // Total = 2 + (8+255) + (8+45) + 3 + 3
     expect(job.length, 2 + 263 + 53 + 3 + 3);
   });
+
+  test('REGRESI v1.8: header xL/xH = byte per baris, BUKAN dots', () {
+    // Gambar 16 dots lebar = 2 byte/baris, 4 baris. Kalau xL/xH diisi
+    // dots (16), printer membaca 16 byte/baris dari stream 2 byte/baris
+    // -> hasil cetak bergeser/duplikat ke kanan.
+    final raster = Uint8List.fromList(List.filled(2 * 4, 0xAA));
+    final job = EscPosBuilder.buildImageJob(
+      raster: raster,
+      widthBytes: 2,
+      height: 4,
+    );
+    expect(
+      job,
+      [
+        0x1B, 0x40, // INIT
+        0x1D, 0x76, 0x30, 0x00, // GS v 0 m=0
+        0x02, 0x00, // xL xH = 2 BYTE (bukan 16 dots!)
+        0x04, 0x00, // yL yH = 4 baris
+        0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, // data: 2*4
+        0x1B, 0x64, 0x04, // feed 4
+        0x1D, 0x56, 0x00, // full cut
+      ],
+    );
+  });
+
+  test('REGRESI v1.8: panjang data raster == bytesPerRow * rows', () {
+    // Simulasi alur cetak asli: lebar = PaperSize printable dots.
+    for (final dots in [384, 576, 832]) {
+      final widthBytes = dots ~/ 8;
+      final height = 10;
+      final raster = Uint8List(widthBytes * height);
+      final job = EscPosBuilder.buildImageJob(
+        raster: raster,
+        widthBytes: widthBytes,
+        height: height,
+      );
+      // header: INIT(2) + GS v 0(8); data = widthBytes*height; tail = 6
+      expect(job.sublist(2, 10),
+          [0x1D, 0x76, 0x30, 0x00, widthBytes & 0xFF, 0x00, 0x0A, 0x00]);
+      expect(job.length, 2 + 8 + widthBytes * height + 3 + 3);
+    }
+  });
 }

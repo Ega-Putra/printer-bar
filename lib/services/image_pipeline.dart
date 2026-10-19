@@ -111,8 +111,16 @@ class ImagePipeline {
 
   /// Letakkan [src] di tengah kanvas putih selebar [targetWidth]
   /// (tinggi tetap). Dipakai setelah rotasi barcode vertikal.
+  ///
+  /// Menjamin invariant "hasil SELALU selebar [targetWidth]": bila [src]
+  /// lebih lebar (mis. barcode vertikal dengan slider tinggi maksimal),
+  /// ia dikecilkan dulu — kalau tidak, lebar bagian tidak sama dengan
+  /// lebar header raster ESC/POS dan hasil cetak artefak.
   static img.Image padToWidth(img.Image src, int targetWidth) {
-    if (src.width >= targetWidth) return src.clone();
+    if (src.width == targetWidth) return src.clone();
+    if (src.width > targetWidth) {
+      return img.copyResize(src, width: targetWidth);
+    }
     final canvas = img.Image(width: targetWidth, height: src.height);
     img.fill(canvas, color: img.ColorRgb8(255, 255, 255));
     final dx = (targetWidth - src.width) ~/ 2;

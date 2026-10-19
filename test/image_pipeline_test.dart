@@ -122,6 +122,18 @@ void main() {
     expect(out.getPixel(7, 1).r, 255);
   });
 
+  test('padToWidth: gambar lebih lebar dari target dikecilkan (invariant)', () {
+    // Regresi: barcode vertikal dengan slider tinggi maksimal bisa lebih
+    // lebar dari target — tanpa ini, stride raster vs header ESC/POS
+    // tidak cocok dan hasil cetak artefak.
+    final src = img.Image(width: 16, height: 4);
+    img.fill(src, color: img.ColorRgb8(0, 0, 0));
+    final out = ImagePipeline.padToWidth(src, 8);
+    expect(out.width, 8);
+    // aspek rasio dipertahankan: 16x4 -> 8x2
+    expect(out.height, 2);
+  });
+
   test('rotate90Clockwise: 2x2 diputar searah jarum jam', () {
     // lama: [R G]
     //       [B W]
