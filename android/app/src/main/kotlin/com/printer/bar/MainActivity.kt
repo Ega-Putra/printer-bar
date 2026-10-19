@@ -1,4 +1,4 @@
-package com.egaputra.thermal_print
+package com.printer.bar
 
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
@@ -16,12 +16,12 @@ import io.flutter.plugin.common.MethodChannel
 /// package print_bluetooth_thermal — agar daftar perangkat hanya berisi
 /// perangkat yang AKTIF terdeteksi di sekitar, bukan riwayat pairing.
 ///
-/// Dart: MethodChannel "com.egaputra.thermal_print/bt_discovery"
+/// Dart: MethodChannel "com.printer.bar/bt_discovery"
 /// (startDiscovery / cancelDiscovery), hasil via EventChannel
-/// "com.egaputra.thermal_print/bt_discovery_events".
+/// "com.printer.bar/bt_discovery_events".
 class MainActivity : FlutterActivity() {
-    private val methodChannelName = "com.egaputra.thermal_print/bt_discovery"
-    private val eventChannelName = "com.egaputra.thermal_print/bt_discovery_events"
+    private val methodChannelName = "com.printer.bar/bt_discovery"
+    private val eventChannelName = "com.printer.bar/bt_discovery_events"
     private var eventSink: EventChannel.EventSink? = null
     private var receiver: BroadcastReceiver? = null
 

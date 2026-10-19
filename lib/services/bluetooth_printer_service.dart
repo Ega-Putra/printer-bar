@@ -33,9 +33,9 @@ enum DeviceKind { printer, headset, laptop, phone, gamepad, other }
 ///   ikut tampil — mirip daftar Bluetooth bawaan HP.
 class BluetoothPrinterService {
   static const _method =
-      MethodChannel('com.egaputra.thermal_print/bt_discovery');
+      MethodChannel('com.printer.bar/bt_discovery');
   static const _events =
-      EventChannel('com.egaputra.thermal_print/bt_discovery_events');
+      EventChannel('com.printer.bar/bt_discovery_events');
 
   /// Minta izin runtime yang dibutuhkan Bluetooth.
   ///
