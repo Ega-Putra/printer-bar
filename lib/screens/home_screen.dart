@@ -16,6 +16,7 @@ import '../services/image_pipeline.dart';
 import '../services/pdf_service.dart';
 import '../widgets/crop_overlay.dart';
 import '../widgets/device_tile.dart';
+import '../widgets/print_preview_image.dart';
 
 /// Dua mode cetak yang tersedia.
 enum PrintMode {
@@ -951,7 +952,7 @@ class _HomeScreenState extends State<HomeScreen>
           const SizedBox(height: 24),
           const Center(
             child: Text(
-              'Printer Bar v1.1.1',
+              'Printer Bar v1.1.2',
               style: TextStyle(color: Colors.grey, fontSize: 12),
             ),
           ),
@@ -1233,7 +1234,7 @@ class _HomeScreenState extends State<HomeScreen>
                   border: Border.all(color: Colors.grey.shade300),
                   color: Colors.white,
                 ),
-                child: Image.memory(bytes),
+                child: PrintPreviewImage(bytes: bytes),
               )
             else
               const Text(
