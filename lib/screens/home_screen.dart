@@ -17,6 +17,8 @@ import '../services/image_pipeline.dart';
 import '../services/pdf_service.dart';
 import '../widgets/crop_overlay.dart';
 import '../widgets/device_tile.dart';
+import '../l10n/app_localizations.dart';
+import '../services/app_errors.dart';
 import '../widgets/print_preview_image.dart';
 
 /// Dua mode cetak yang tersedia.
@@ -148,7 +150,7 @@ class _HomeScreenState extends State<HomeScreen>
     _intentSub = ReceiveSharingIntent.instance.getMediaStream().listen(
       _handleSharedFiles,
       onError: (Object e) =>
-          _snack('Gagal menerima share: $e', error: true),
+          _snack(l.shareFailed(_localizedError(e)), error: true),
     );
     // PDF yang di-share saat aplikasi masih tertutup (cold start).
     ReceiveSharingIntent.instance.getInitialMedia().then((files) {
@@ -221,9 +223,32 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  String _errMsg(Object e) {
-    final s = e.toString();
-    return s.startsWith('Exception: ') ? s.substring(11) : s;
+  /// Pintasan lokalisasi sesuai bahasa sistem.
+  AppLocalizations get l => AppLocalizations.of(context)!;
+
+  /// Pesan error siap tampil: exception bertipe dari service dipetakan ke
+  /// string lokal; exception lain dibersihkan prefix-nya.
+  String _localizedError(Object e) {
+    return switch (e) {
+      BluetoothPermissionDenied _ => l.btPermissionDenied,
+      BluetoothConnectFailed f => l.btConnectFailed(f.deviceName),
+      BluetoothWriteFailed f => l.btWriteFailed(f.byteCount),
+      PdfPickerTimeout _ => l.pickerTimeout,
+      PdfUnreadable _ => l.pdfUnreadable,
+      PdfNotFound f => l.pdfNotFound(f.path),
+      PdfRenderPageFailed f => l.pdfRenderPageFailed(f.page),
+      InvalidImageFile _ => l.invalidImage,
+      _ => _stripExceptionPrefix(e.toString()),
+    };
+  }
+
+  static String _stripExceptionPrefix(String s) {
+    if (s.startsWith('Exception: ')) return s.substring(11);
+    final idx = s.indexOf(': ');
+    if (idx > 0 && idx < 40 && !s.substring(0, idx).contains(' ')) {
+      return s.substring(idx + 2);
+    }
+    return s;
   }
 
   // ---------- Share intent ----------
@@ -238,7 +263,7 @@ class _HomeScreenState extends State<HomeScreen>
     }
     if (pdf == null) return;
     if (!File(pdf.path).existsSync()) {
-      _snack('Berkas PDF yang di-share tidak bisa dibaca.', error: true);
+      _snack(l.sharedPdfUnreadable, error: true);
       return;
     }
     _loadPdfFromPath(pdf.path, name: pdf.path.split('/').last);
@@ -250,7 +275,7 @@ class _HomeScreenState extends State<HomeScreen>
     if (_loadingPdf) return;
     setState(() {
       _loadingPdf = true;
-      _progress = 'Membuka pemilih berkas...';
+      _progress = l.progressOpeningPicker;
     });
     String? path;
     try {
@@ -264,8 +289,7 @@ class _HomeScreenState extends State<HomeScreen>
           _progress = null;
         });
         _snack(
-          'Pemilih berkas tidak merespons. Coba lagi, atau buka PDF '
-          'dari File Manager lalu Share > Printer Bar.',
+          l.pickerUnresponsivePdf,
           error: true,
         );
       }
@@ -276,7 +300,7 @@ class _HomeScreenState extends State<HomeScreen>
           _loadingPdf = false;
           _progress = null;
         });
-        _snack('Gagal membuka pemilih berkas: ${_errMsg(e)}', error: true);
+        _snack(l.openPickerFailed(_localizedError(e)), error: true);
       }
       return;
     }
@@ -304,7 +328,7 @@ class _HomeScreenState extends State<HomeScreen>
     if (_loadingPdf) return;
     setState(() {
       _loadingPdf = true;
-      _progress = 'Me-render PDF...';
+      _progress = l.progressRenderingPdf;
     });
     try {
       // Render 2x lebar cetak agar deteksi barcode akurat.
@@ -315,8 +339,7 @@ class _HomeScreenState extends State<HomeScreen>
           .timeout(
         const Duration(seconds: 90),
         onTimeout: () => throw TimeoutException(
-          'Render PDF terlalu lama (90 detik). Berkas mungkin rusak '
-          'atau tidak didukung.',
+          l.pdfRenderTimeout,
         ),
       );
       if (!mounted) return;
@@ -347,9 +370,9 @@ class _HomeScreenState extends State<HomeScreen>
         _refreshPrintPreview();
       }
     } on TimeoutException catch (e) {
-      _snack('Gagal me-render PDF: ${e.message}', error: true);
+      _snack(l.renderPdfFailed(_localizedError(e)), error: true);
     } catch (e) {
-      _snack('Gagal memuat PDF: ${_errMsg(e)}', error: true);
+      _snack(l.loadPdfFailed(_localizedError(e)), error: true);
     } finally {
       if (mounted) {
         setState(() {
@@ -369,16 +392,14 @@ class _HomeScreenState extends State<HomeScreen>
     if (_loadingPdf) return;
     setState(() {
       _loadingPdf = true;
-      _progress = 'Membuka pemilih berkas...';
+      _progress = l.progressOpeningPicker;
     });
     try {
       final files = await FilePicker.pickFiles(
         type: FileType.image,
       ).timeout(
         const Duration(seconds: 60),
-        onTimeout: () => throw TimeoutException(
-          'Pemilih berkas tidak merespons dalam 60 detik.',
-        ),
+        onTimeout: () => throw TimeoutException(l.pickerTimeout),
       );
       if (files.isEmpty) {
         // Pengguna batal.
@@ -399,7 +420,7 @@ class _HomeScreenState extends State<HomeScreen>
         bytes = await file.readAsBytes();
       }
       if (bytes.isEmpty) {
-        throw Exception('Berkas gambar tidak bisa dibaca.');
+        throw Exception(l.imageUnreadable);
       }
       if (mounted) setState(() => _loadingPdf = false);
       await _loadImageFromBytes(bytes, file.name);
@@ -409,10 +430,7 @@ class _HomeScreenState extends State<HomeScreen>
           _loadingPdf = false;
           _progress = null;
         });
-        _snack(
-          'Pemilih berkas tidak merespons. Coba lagi.',
-          error: true,
-        );
+        _snack(l.pickerUnresponsiveShort, error: true);
       }
     } catch (e) {
       if (mounted) {
@@ -420,7 +438,7 @@ class _HomeScreenState extends State<HomeScreen>
           _loadingPdf = false;
           _progress = null;
         });
-        _snack('Gagal memuat gambar: ${_errMsg(e)}', error: true);
+        _snack(l.loadImageFailed(_localizedError(e)), error: true);
       }
     }
   }
@@ -430,14 +448,14 @@ class _HomeScreenState extends State<HomeScreen>
     if (_loadingPdf) return;
     setState(() {
       _loadingPdf = true;
-      _progress = 'Memuat gambar...';
+      _progress = l.progressLoadingImage;
     });
     try {
       late img.Image decoded;
       try {
         decoded = ImagePipeline.decode(bytes);
       } catch (_) {
-        throw Exception('Berkas bukan gambar yang valid.');
+        throw Exception(l.invalidImage);
       }
       // Normalisasi ke PNG + simpan ke cache agar deteksi barcode
       // (yang bekerja via path berkas) bisa dipakai.
@@ -478,7 +496,7 @@ class _HomeScreenState extends State<HomeScreen>
         _refreshPrintPreview();
       }
     } catch (e) {
-      _snack('Gagal memuat gambar: ${_errMsg(e)}', error: true);
+      _snack(l.loadImageFailed(_localizedError(e)), error: true);
     } finally {
       if (mounted) {
         setState(() {
@@ -500,7 +518,7 @@ class _HomeScreenState extends State<HomeScreen>
     final i = _previewIndex;
     setState(() {
       _loadingPdf = true;
-      _progress = 'Memutar gambar...';
+      _progress = l.progressRotatingImage;
     });
     try {
       final page = _pages[i];
@@ -537,7 +555,7 @@ class _HomeScreenState extends State<HomeScreen>
       // gambar asli; _effectiveDetection mentransform bbox-nya.
       _refreshPrintPreview();
     } catch (e) {
-      _snack('Gagal memutar gambar: ${_errMsg(e)}', error: true);
+      _snack(l.rotateFailed(_localizedError(e)), error: true);
     } finally {
       if (mounted) {
         setState(() {
@@ -615,8 +633,7 @@ class _HomeScreenState extends State<HomeScreen>
           found = await _barcodes.detect(srcPath);
         } catch (e) {
           if (!mounted) return;
-          _snack('Deteksi barcode halaman ${i + 1} gagal: ${_errMsg(e)}',
-              error: true);
+          _snack(l.detectBarcodeFailed(i + 1, _localizedError(e)), error: true);
           found = [];
         }
         if (!mounted) return;
@@ -653,8 +670,7 @@ class _HomeScreenState extends State<HomeScreen>
       await _bt.ensurePermissions();
       final on = await _bt.bluetoothOn;
       if (!on) {
-        throw Exception(
-            'Bluetooth HP mati. Nyalakan Bluetooth dulu, lalu pindai lagi.');
+        throw Exception(l.bluetoothOff);
       }
       // Perangkat tersimpan — gagal dimuat tak menggagalkan pemindaian.
       try {
@@ -666,8 +682,7 @@ class _HomeScreenState extends State<HomeScreen>
           });
         }
       } catch (e) {
-        _snack('Gagal membaca perangkat tersimpan: ${_errMsg(e)}',
-            error: true);
+        _snack(l.readBondedFailed(_localizedError(e)), error: true);
       }
       await _discoverySub?.cancel();
       _discoverySub = _bt.discoveryStream().listen(
@@ -683,14 +698,13 @@ class _HomeScreenState extends State<HomeScreen>
           });
         },
         onError: (Object e) {
-          _snack('Gagal memindai: ${_errMsg(e)}', error: true);
+          _snack(l.scanFailed(_localizedError(e)), error: true);
           _finishScan();
         },
       );
       final started = await _bt.startDiscovery();
       if (!started) {
-        throw Exception(
-            'Gagal memulai pemindaian Bluetooth. Pastikan Bluetooth menyala.');
+        throw Exception(l.scanStartFailed);
       }
       // Timeout pengaman bila event "finished" tak kunjung datang.
       _scanTimer?.cancel();
@@ -698,7 +712,7 @@ class _HomeScreenState extends State<HomeScreen>
         if (mounted && _scanning) _finishScan(showEmptyHint: true);
       });
     } catch (e) {
-      _snack(_errMsg(e), error: true);
+      _snack(_localizedError(e), error: true);
       _finishScan();
     }
   }
@@ -721,8 +735,7 @@ class _HomeScreenState extends State<HomeScreen>
     if (!mounted) return;
     setState(() => _scanning = false);
     if (_devices.isEmpty && showEmptyHint) {
-      _snack('Tidak ada perangkat terdeteksi. Pastikan printer menyala '
-          'dan berada di dekat HP.');
+      _snack(l.noDevicesFound);
     }
   }
 
@@ -733,9 +746,9 @@ class _HomeScreenState extends State<HomeScreen>
       await _bt.connect(device);
       if (!mounted) return;
       setState(() => _connected = device);
-      _snack('Terhubung ke "${device.name}"');
+      _snack(l.connectedTo(device.name));
     } catch (e) {
-      _snack(_errMsg(e), error: true);
+      _snack(_localizedError(e), error: true);
     } finally {
       if (mounted) setState(() => _connectingMac = false);
     }
@@ -745,7 +758,7 @@ class _HomeScreenState extends State<HomeScreen>
     await _bt.disconnect();
     if (!mounted) return;
     setState(() => _connected = null);
-    _snack('Koneksi printer diputus');
+    _snack(l.disconnected);
   }
 
   // ---------- Cetak ----------
@@ -766,9 +779,9 @@ class _HomeScreenState extends State<HomeScreen>
       // Seharusnya tak terjadi karena tombol Cetak dinonaktifkan,
       // tapi tetap dijaga agar tak pernah mencetak layout yang salah.
       if (_detections[pageIndex] == null) {
-        throw Exception('Barcode tidak ditemukan di halaman ${pageIndex + 1}.');
+        throw Exception(l.barcodeNotFoundThrow(pageIndex + 1));
       }
-      throw Exception('Barcode di luar area crop halaman ${pageIndex + 1}.');
+      throw Exception(l.barcodeOutsideCropThrow(pageIndex + 1));
     }
     // 1. Generate ulang yang tajam & full-width bila ada nilai decode.
     final barHpx = (_barcodeHeightMm / 25.4 * 203).round();
@@ -823,17 +836,17 @@ class _HomeScreenState extends State<HomeScreen>
     if (!_canPrint) return;
     setState(() {
       _printing = true;
-      _progress = 'Menyiapkan...';
+      _progress = l.progressPreparing;
     });
     try {
       if (!await _bt.isConnected) {
-        throw Exception('Printer terputus. Hubungkan ulang dulu.');
+        throw Exception(l.printerDisconnected);
       }
       final dots = _paper.dots;
       for (var i = 0; i < _pages.length; i++) {
         if (!mounted) return;
         setState(
-            () => _progress = 'Mencetak halaman ${i + 1}/${_pages.length}...');
+            () => _progress = l.progressPrintingPage(i + 1, _pages.length));
         final finalImg = _composePage(i, dots);
         final raster = _rasterize(finalImg);
         final job = EscPosBuilder.buildImageJob(
@@ -843,9 +856,9 @@ class _HomeScreenState extends State<HomeScreen>
         );
         await _bt.writeBytes(job);
       }
-      _snack('Berhasil dicetak 🎉');
+      _snack(l.printSuccess);
     } catch (e) {
-      _snack('Gagal mencetak: ${_errMsg(e)}', error: true);
+      _snack(l.printFailed(_localizedError(e)), error: true);
     } finally {
       if (mounted) {
         setState(() {
@@ -880,9 +893,9 @@ class _HomeScreenState extends State<HomeScreen>
           unselectedLabelColor:
               Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
           indicatorColor: Theme.of(context).colorScheme.primary,
-          tabs: const [
-            Tab(icon: Icon(Icons.print), text: 'Cetak'),
-            Tab(icon: Icon(Icons.settings), text: 'Pengaturan'),
+          tabs: [
+            Tab(icon: const Icon(Icons.print), text: l.tabPrint),
+            Tab(icon: const Icon(Icons.settings), text: l.tabSettings),
           ],
         ),
       ),
@@ -953,9 +966,9 @@ class _HomeScreenState extends State<HomeScreen>
           const SizedBox(height: 12),
           _aboutCard(),
           const SizedBox(height: 24),
-          const Center(
+          Center(
             child: Text(
-              'Printer Bar v1.1.4',
+              l.appVersion,
               style: TextStyle(color: Colors.grey, fontSize: 12),
             ),
           ),
@@ -970,8 +983,8 @@ class _HomeScreenState extends State<HomeScreen>
     return Card(
       child: ListTile(
         leading: const Icon(Icons.privacy_tip_outlined),
-        title: const Text('Kebijakan Privasi'),
-        subtitle: const Text('Bagaimana aplikasi ini menangani data Anda'),
+        title: Text(l.privacyTitle),
+        subtitle: Text(l.privacySubtitle),
         trailing: const Icon(Icons.open_in_new, size: 18),
         onTap: _openPrivacyPolicy,
       ),
@@ -984,7 +997,7 @@ class _HomeScreenState extends State<HomeScreen>
     final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
     if (!ok && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Tidak bisa membuka kebijakan privasi')),
+        SnackBar(content: Text(l.privacyOpenFailed)),
       );
     }
   }
@@ -996,7 +1009,7 @@ class _HomeScreenState extends State<HomeScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Ukuran Kertas',
+            Text(l.paperTitle,
                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
             const SizedBox(height: 8),
             SegmentedButton<PaperSize>(
@@ -1009,7 +1022,7 @@ class _HomeScreenState extends State<HomeScreen>
             ),
             const SizedBox(height: 4),
             Text(
-              'Lebar cetak: ${_paper.dots} dots @ 203 dpi',
+              l.printWidth(_paper.dots),
               style: Theme.of(context).textTheme.bodySmall,
             ),
           ],
@@ -1025,11 +1038,11 @@ class _HomeScreenState extends State<HomeScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text('Sumber Resi',
+            Text(l.sourceTitle,
                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
             const SizedBox(height: 4),
             Text(
-              'Bisa juga via Share > Printer Bar dari aplikasi lain.',
+              l.sourceHint,
               style: Theme.of(context).textTheme.bodySmall,
             ),
             const SizedBox(height: 8),
@@ -1039,7 +1052,7 @@ class _HomeScreenState extends State<HomeScreen>
                   child: OutlinedButton.icon(
                     onPressed: _loadingPdf ? null : _pickPdf,
                     icon: const Icon(Icons.picture_as_pdf),
-                    label: const Text('Pilih PDF'),
+                    label: Text(l.pickPdf),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -1047,7 +1060,7 @@ class _HomeScreenState extends State<HomeScreen>
                   child: OutlinedButton.icon(
                     onPressed: _loadingPdf ? null : _pickImage,
                     icon: const Icon(Icons.image),
-                    label: const Text('Pilih Gambar'),
+                    label: Text(l.pickImage),
                   ),
                 ),
               ],
@@ -1057,8 +1070,8 @@ class _HomeScreenState extends State<HomeScreen>
               Text('📄 $_pdfName'),
               Text(
                   _sourceIsImage
-                      ? '1 gambar'
-                      : '${_pages.length} halaman',
+                      ? l.singleImage
+                      : l.pageCount(_pages.length),
                   style: Theme.of(context).textTheme.bodySmall),
             ],
           ],
@@ -1079,7 +1092,7 @@ class _HomeScreenState extends State<HomeScreen>
           children: [
             Row(
               children: [
-                const Text('Pratinjau & Crop',
+                Text(l.previewCropTitle,
                     style:
                         TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                 const Spacer(),
@@ -1094,12 +1107,12 @@ class _HomeScreenState extends State<HomeScreen>
                 TextButton.icon(
                   onPressed: _resetCrop,
                   icon: const Icon(Icons.crop_free, size: 18),
-                  label: const Text('Reset'),
+                  label: Text(l.reset),
                 ),
               ],
             ),
-            const Text(
-              'Seret sudut/sisi untuk ubah area • seret tengah untuk pindah',
+            Text(
+              l.cropHint,
               style: TextStyle(fontSize: 12, color: Colors.grey),
             ),
             const SizedBox(height: 8),
@@ -1172,7 +1185,7 @@ class _HomeScreenState extends State<HomeScreen>
       return const SizedBox.shrink();
     }
     if (_detecting && !_detections.containsKey(pageIndex)) {
-      return const Row(
+      return Row(
         children: [
           SizedBox(
             width: 16,
@@ -1180,7 +1193,7 @@ class _HomeScreenState extends State<HomeScreen>
             child: CircularProgressIndicator(strokeWidth: 2),
           ),
           SizedBox(width: 8),
-          Text('Mendeteksi barcode...'),
+          Text(l.detectingBarcode),
         ],
       );
     }
@@ -1191,7 +1204,7 @@ class _HomeScreenState extends State<HomeScreen>
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              'Barcode tidak ditemukan di halaman ${pageIndex + 1}',
+              l.barcodeNotFoundPage(pageIndex + 1),
               style: const TextStyle(color: Colors.red),
             ),
           ),
@@ -1205,7 +1218,7 @@ class _HomeScreenState extends State<HomeScreen>
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              'Barcode di luar area crop halaman ${pageIndex + 1}',
+              l.barcodeOutsideCrop(pageIndex + 1),
               style: const TextStyle(color: Colors.orange),
             ),
           ),
@@ -1224,8 +1237,8 @@ class _HomeScreenState extends State<HomeScreen>
         Expanded(
           child: Text(
             rewritten
-                ? 'Barcode ditemukan ✓\n${det.rawValue} (ditulis ulang tajam)'
-                : 'Barcode ditemukan ✓\nNilai tak terbaca — memakai crop gambar',
+                ? l.barcodeFoundRewritten(det.rawValue!)
+                : l.barcodeFoundImageCrop,
             style: TextStyle(
                 color: rewritten ? Colors.green : Colors.orange),
           ),
@@ -1244,13 +1257,12 @@ class _HomeScreenState extends State<HomeScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Pratinjau Hasil Cetak',
+            Text(l.printPreviewTitle,
                 style:
                     TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
             const SizedBox(height: 4),
             Text(
-              'Persis seperti yang keluar dari printer — halaman '
-              '${_previewIndex + 1}.',
+              l.printPreviewSubtitle(_previewIndex + 1),
               style: Theme.of(context).textTheme.bodySmall,
             ),
             const SizedBox(height: 8),
@@ -1264,8 +1276,8 @@ class _HomeScreenState extends State<HomeScreen>
                 child: PrintPreviewImage(bytes: bytes),
               )
             else
-              const Text(
-                'Belum bisa dipratinjau (mis. barcode belum terdeteksi).',
+              Text(
+                l.printPreviewUnavailable,
                 style: TextStyle(color: Colors.grey),
               ),
           ],
@@ -1350,7 +1362,7 @@ class _HomeScreenState extends State<HomeScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Opsi Cetak',
+            Text(l.printOptionsTitle,
                 style:
                     TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
             const SizedBox(height: 8),
@@ -1364,8 +1376,8 @@ class _HomeScreenState extends State<HomeScreen>
                         ? scheme.onPrimary
                         : scheme.onSurfaceVariant,
                   ),
-                  label: 'Asli',
-                  tooltip: 'Cetak asli: resi apa adanya selebar kertas',
+                  label: l.modeOriginal,
+                  tooltip: l.modeOriginalTooltip,
                   selected: _mode == PrintMode.asli,
                   onTap: () => _onModeChanged(PrintMode.asli),
                 ),
@@ -1376,18 +1388,17 @@ class _HomeScreenState extends State<HomeScreen>
                         ? scheme.onPrimary
                         : scheme.onSurfaceVariant,
                   ),
-                  label: 'Barcode',
-                  tooltip:
-                      'Barcode diperbesar: barcode terbesar dicetak ulang selebar kertas di bawah resi',
+                  label: l.modeBarcode,
+                  tooltip: l.modeBarcodeTooltip,
                   selected: inBarcodeMode,
                   onTap: () => _onModeChanged(PrintMode.barcodeDiperbesar),
                 ),
                 toggle(
                   icon: orientIcon,
-                  label: _barcodeVertical ? 'Vertikal' : 'Horisontal',
+                  label: _barcodeVertical ? l.orientationVertical : l.orientationHorizontal,
                   tooltip: _barcodeVertical
-                      ? 'Barcode vertikal (diputar 90°) — ketuk untuk horizontal'
-                      : 'Barcode horizontal — ketuk untuk vertikal',
+                      ? l.orientationVerticalTooltip
+                      : l.orientationHorizontalTooltip,
                   selected: inBarcodeMode && _barcodeVertical,
                   onTap: inBarcodeMode
                       ? () {
@@ -1404,9 +1415,9 @@ class _HomeScreenState extends State<HomeScreen>
                         ? scheme.onPrimary
                         : scheme.onSurfaceVariant,
                   ),
-                  label: 'Dither',
+                  label: l.dither,
                   tooltip:
-                      'Dithering: foto & gambar bergradasi tercetak lebih halus',
+                      l.ditherTooltip,
                   selected: _dithering,
                   onTap: () {
                     setState(() => _dithering = !_dithering);
@@ -1429,7 +1440,7 @@ class _HomeScreenState extends State<HomeScreen>
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
         child: Row(
           children: [
-            const Text('Tinggi barcode:'),
+            Text(l.barcodeHeight),
             Expanded(
               child: Slider(
                 value: _barcodeHeightMm,
@@ -1461,23 +1472,21 @@ class _HomeScreenState extends State<HomeScreen>
           children: [
             Row(
               children: [
-                const Text('Printer Bluetooth',
+                Text(l.bluetoothTitle,
                     style:
                         TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                 const Spacer(),
                 if (_connected != null)
-                  const Chip(
-                    avatar: Icon(Icons.check_circle,
+                  Chip(
+                    avatar: const Icon(Icons.check_circle,
                         color: Colors.green, size: 18),
-                    label: Text('Terhubung'),
+                    label: Text(l.connected),
                   ),
               ],
             ),
             const SizedBox(height: 4),
             Text(
-              'Perangkat yang sudah di-pairing tampil di "Tersimpan". '
-              'Nyalakan printer lalu pindai untuk menemukan perangkat '
-              'baru di sekitar.',
+              l.bluetoothHint,
               style: Theme.of(context).textTheme.bodySmall,
             ),
             const SizedBox(height: 8),
@@ -1485,16 +1494,15 @@ class _HomeScreenState extends State<HomeScreen>
               onPressed: _scanDevices,
               icon: const Icon(Icons.bluetooth_searching),
               label: Text(_scanning
-                  ? 'Berhenti (${_devices.length})'
-                  : 'Pindai Perangkat'),
+                  ? l.stopScanning(_devices.length)
+                  : l.scanDevices),
             ),
             if (_scanning) ...[
               const SizedBox(height: 8),
               const LinearProgressIndicator(),
               const SizedBox(height: 4),
               Text(
-                'Memindai perangkat di sekitar... '
-                'tap "Berhenti" bila printer sudah muncul.',
+                l.scanningHint,
                 style: Theme.of(context).textTheme.bodySmall,
               ),
             ],
@@ -1508,12 +1516,12 @@ class _HomeScreenState extends State<HomeScreen>
               TextButton.icon(
                 onPressed: _disconnect,
                 icon: const Icon(Icons.bluetooth_disabled),
-                label: const Text('Putuskan koneksi'),
+                label: Text(l.disconnect),
               ),
             ] else ...[
               if (_bonded.isNotEmpty) ...[
                 const SizedBox(height: 8),
-                const Text('Perangkat tersimpan',
+                Text(l.savedDevices,
                     style:
                         TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                 for (final d in _bonded)
@@ -1525,7 +1533,7 @@ class _HomeScreenState extends State<HomeScreen>
               ],
               if (_devices.isNotEmpty) ...[
                 const SizedBox(height: 8),
-                const Text('Perangkat tersedia',
+                Text(l.availableDevices,
                     style:
                         TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                 for (final d in BluetoothPrinterService.sortPrintersFirst(
@@ -1550,7 +1558,7 @@ class _HomeScreenState extends State<HomeScreen>
       label: Padding(
         padding: const EdgeInsets.symmetric(vertical: 12),
         child: Text(
-          _printing ? 'Mencetak...' : 'Cetak',
+          _printing ? l.printingButton : l.printButton,
           style: const TextStyle(fontSize: 18),
         ),
       ),

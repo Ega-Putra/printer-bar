@@ -1,0 +1,270 @@
+{
+  "@@locale": "id",
+  "tabPrint": "Cetak",
+  "tabSettings": "Pengaturan",
+  "appVersion": "Printer Bar v1.2.0",
+  "privacyTitle": "Kebijakan Privasi",
+  "privacySubtitle": "Bagaimana aplikasi ini menangani data Anda",
+  "privacyOpenFailed": "Tidak bisa membuka kebijakan privasi",
+  "paperTitle": "Ukuran Kertas",
+  "printWidth": "Lebar cetak: {dots} dots @ 203 dpi",
+  "@printWidth": {
+    "placeholders": {
+      "dots": {
+        "type": "int"
+      }
+    }
+  },
+  "sourceTitle": "Sumber Resi",
+  "sourceHint": "Bisa juga via Share > Printer Bar dari aplikasi lain.",
+  "pickPdf": "Pilih PDF",
+  "pickImage": "Pilih Gambar",
+  "singleImage": "1 gambar",
+  "pageCount": "{count} halaman",
+  "@pageCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "previewCropTitle": "Pratinjau & Crop",
+  "reset": "Reset",
+  "cropHint": "Seret sudut/sisi untuk ubah area • seret tengah untuk pindah",
+  "detectingBarcode": "Mendeteksi barcode...",
+  "barcodeNotFoundPage": "Barcode tidak ditemukan di halaman {page}",
+  "@barcodeNotFoundPage": {
+    "placeholders": {
+      "page": {
+        "type": "int"
+      }
+    }
+  },
+  "barcodeOutsideCrop": "Barcode di luar area crop halaman {page}",
+  "@barcodeOutsideCrop": {
+    "placeholders": {
+      "page": {
+        "type": "int"
+      }
+    }
+  },
+  "barcodeFoundRewritten": "Barcode ditemukan ✓\n{value} (ditulis ulang tajam)",
+  "@barcodeFoundRewritten": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "barcodeFoundImageCrop": "Barcode ditemukan ✓\nNilai tak terbaca — memakai crop gambar",
+  "printPreviewTitle": "Pratinjau Hasil Cetak",
+  "printPreviewSubtitle": "Persis seperti yang keluar dari printer — halaman {page}.",
+  "@printPreviewSubtitle": {
+    "placeholders": {
+      "page": {
+        "type": "int"
+      }
+    }
+  },
+  "printPreviewUnavailable": "Belum bisa dipratinjau (mis. barcode belum terdeteksi).",
+  "printOptionsTitle": "Opsi Cetak",
+  "modeOriginal": "Asli",
+  "modeOriginalTooltip": "Cetak asli: resi apa adanya selebar kertas",
+  "modeBarcode": "Barcode",
+  "modeBarcodeTooltip": "Barcode diperbesar: barcode terbesar dicetak ulang selebar kertas di bawah resi",
+  "orientationVertical": "Vertikal",
+  "orientationHorizontal": "Horisontal",
+  "orientationVerticalTooltip": "Barcode vertikal (diputar 90°) — ketuk untuk horizontal",
+  "orientationHorizontalTooltip": "Barcode horizontal — ketuk untuk vertikal",
+  "dither": "Dither",
+  "ditherTooltip": "Dithering: foto & gambar bergradasi tercetak lebih halus",
+  "barcodeHeight": "Tinggi barcode:",
+  "bluetoothTitle": "Printer Bluetooth",
+  "connected": "Terhubung",
+  "bluetoothHint": "Perangkat yang sudah di-pairing tampil di \"Tersimpan\". Nyalakan printer lalu pindai untuk menemukan perangkat baru di sekitar.",
+  "stopScanning": "Berhenti ({count})",
+  "@stopScanning": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "scanDevices": "Pindai Perangkat",
+  "scanningHint": "Memindai perangkat di sekitar... tap \"Berhenti\" bila printer sudah muncul.",
+  "disconnect": "Putuskan koneksi",
+  "savedDevices": "Perangkat tersimpan",
+  "availableDevices": "Perangkat tersedia",
+  "printButton": "Cetak",
+  "printingButton": "Mencetak...",
+  "progressOpeningPicker": "Membuka pemilih berkas...",
+  "progressRenderingPdf": "Me-render PDF...",
+  "progressLoadingImage": "Memuat gambar...",
+  "progressRotatingImage": "Memutar gambar...",
+  "progressPreparing": "Menyiapkan...",
+  "progressPrintingPage": "Mencetak halaman {page}/{total}...",
+  "@progressPrintingPage": {
+    "placeholders": {
+      "page": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "shareFailed": "Gagal menerima share: {error}",
+  "@shareFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "sharedPdfUnreadable": "Berkas PDF yang di-share tidak bisa dibaca.",
+  "pickerTimeout": "Pemilih berkas tidak merespons dalam 60 detik.",
+  "pickerUnresponsivePdf": "Pemilih berkas tidak merespons. Coba lagi, atau buka PDF dari File Manager lalu Share > Printer Bar.",
+  "pickerUnresponsiveShort": "Pemilih berkas tidak merespons. Coba lagi.",
+  "openPickerFailed": "Gagal membuka pemilih berkas: {error}",
+  "@openPickerFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "pdfRenderTimeout": "Render PDF terlalu lama (90 detik). Berkas mungkin rusak atau tidak didukung.",
+  "renderPdfFailed": "Gagal me-render PDF: {error}",
+  "@renderPdfFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "loadPdfFailed": "Gagal memuat PDF: {error}",
+  "@loadPdfFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "imageUnreadable": "Berkas gambar tidak bisa dibaca.",
+  "invalidImage": "Berkas bukan gambar yang valid.",
+  "loadImageFailed": "Gagal memuat gambar: {error}",
+  "@loadImageFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "rotateFailed": "Gagal memutar gambar: {error}",
+  "@rotateFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "detectBarcodeFailed": "Deteksi barcode halaman {page} gagal: {error}",
+  "@detectBarcodeFailed": {
+    "placeholders": {
+      "page": {
+        "type": "int"
+      },
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "bluetoothOff": "Bluetooth HP mati. Nyalakan Bluetooth dulu, lalu pindai lagi.",
+  "readBondedFailed": "Gagal membaca perangkat tersimpan: {error}",
+  "@readBondedFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "scanFailed": "Gagal memindai: {error}",
+  "@scanFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "scanStartFailed": "Gagal memulai pemindaian Bluetooth. Pastikan Bluetooth menyala.",
+  "noDevicesFound": "Tidak ada perangkat terdeteksi. Pastikan printer menyala dan berada di dekat HP.",
+  "connectedTo": "Terhubung ke \"{name}\"",
+  "@connectedTo": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "disconnected": "Koneksi printer diputus",
+  "barcodeNotFoundThrow": "Barcode tidak ditemukan di halaman {page}.",
+  "@barcodeNotFoundThrow": {
+    "placeholders": {
+      "page": {
+        "type": "int"
+      }
+    }
+  },
+  "barcodeOutsideCropThrow": "Barcode di luar area crop halaman {page}.",
+  "@barcodeOutsideCropThrow": {
+    "placeholders": {
+      "page": {
+        "type": "int"
+      }
+    }
+  },
+  "printerDisconnected": "Printer terputus. Hubungkan ulang dulu.",
+  "printSuccess": "Berhasil dicetak 🎉",
+  "printFailed": "Gagal mencetak: {error}",
+  "@printFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "btPermissionDenied": "Izin Bluetooth tidak diberikan. Aktifkan di Pengaturan > Aplikasi > Printer Bar > Izin, lalu coba lagi.",
+  "btConnectFailed": "Gagal terhubung ke \"{name}\". Pastikan printer menyala, berada di dekat HP, dan tidak dipakai aplikasi lain. Jika diminta, setujui pairing di HP.",
+  "@btConnectFailed": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "btWriteFailed": "Gagal mengirim {count} byte ke printer. Periksa koneksi lalu coba lagi.",
+  "@btWriteFailed": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "pdfUnreadable": "Berkas PDF tidak bisa dibaca dari penyimpanan HP. Coba pilih lagi dari aplikasi File Manager.",
+  "pdfNotFound": "Berkas PDF tidak ditemukan di: {path}",
+  "@pdfNotFound": {
+    "placeholders": {
+      "path": {
+        "type": "String"
+      }
+    }
+  },
+  "pdfRenderPageFailed": "Gagal me-render halaman {page}",
+  "@pdfRenderPageFailed": {
+    "placeholders": {
+      "page": {
+        "type": "int"
+      }
+    }
+  }
+}

@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:image/image.dart' as img;
+import 'app_errors.dart';
 
 /// Kotak pembatas sederhana dalam koordinat piksel.
 ///
@@ -174,11 +175,11 @@ class ImagePipeline {
 
   /// Decode byte PNG/JPEG menjadi [img.Image].
   ///
-  /// Melempar [FormatException] bila byte bukan gambar yang valid.
+  /// Melempar [InvalidImageFile] bila byte bukan gambar yang valid.
   static img.Image decode(Uint8List bytes) {
     final decoded = img.decodeImage(bytes);
     if (decoded == null) {
-      throw const FormatException('Berkas bukan gambar yang valid');
+      throw const InvalidImageFile();
     }
     return decoded;
   }

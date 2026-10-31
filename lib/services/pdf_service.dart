@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pdfx/pdfx.dart';
+import 'app_errors.dart';
 
 /// Satu halaman PDF yang sudah di-render menjadi berkas PNG.
 class RenderedPage {
@@ -43,9 +44,7 @@ class PdfService {
       allowedExtensions: ['pdf'],
     ).timeout(
       const Duration(seconds: 60),
-      onTimeout: () => throw TimeoutException(
-        'Pemilih berkas tidak merespons dalam 60 detik.',
-      ),
+      onTimeout: () => throw const PdfPickerTimeout(),
     );
     // Dibatalkan pengguna → list kosong (BUKAN error).
     if (files.isEmpty) return null;
@@ -67,10 +66,7 @@ class PdfService {
     } catch (_) {
       // Jatuh ke Exception di bawah dengan pesan yang jelas.
     }
-    throw Exception(
-      'Berkas PDF tidak bisa dibaca dari penyimpanan HP. '
-      'Coba pilih lagi dari aplikasi File Manager.',
-    );
+    throw const PdfUnreadable();
   }
 
   /// Render semua halaman [pdfPath] menjadi PNG selebar [renderWidth] piksel.
@@ -82,7 +78,7 @@ class PdfService {
     required int renderWidth,
   }) async {
     if (!File(pdfPath).existsSync()) {
-      throw Exception('Berkas PDF tidak ditemukan di: $pdfPath');
+      throw PdfNotFound(pdfPath);
     }
     final document = await PdfDocument.openFile(pdfPath);
     try {
@@ -99,7 +95,7 @@ class PdfService {
             backgroundColor: '#FFFFFF',
           );
           if (rendered == null) {
-            throw Exception('Gagal me-render halaman $i');
+            throw PdfRenderPageFailed(i);
           }
           final file = File('${tmp.path}/resi_p${i}_$stamp.png');
           await file.writeAsBytes(rendered.bytes);

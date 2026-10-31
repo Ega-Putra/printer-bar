@@ -1,7 +1,7 @@
 name: thermal_print
 description: "Cetak resi PDF ke printer thermal Bluetooth (58/80/112mm) dengan opsi barcode diperbesar."
 publish_to: 'none'
-version: 1.1.4+15
+version: 1.2.0+16
 
 environment:
   sdk: ^3.12.0
@@ -35,6 +35,10 @@ dependencies:
   zxing2: ^0.2.4
   # Buka URL eksternal (link kebijakan privasi)
   url_launcher: ^6.3.1
+  # Lokalisasi UI (ikuti bahasa sistem, default Inggris)
+  flutter_localizations:
+    sdk: flutter
+  intl: ^0.20.2
 
 dev_dependencies:
   flutter_test:
@@ -45,6 +49,7 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  generate: true
 
 flutter_launcher_icons:
   android: true

@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
 
+import 'app_errors.dart';
+
 /// Perangkat Bluetooth (printer maupun bukan).
 class PrinterDevice {
   final String name;
@@ -53,10 +55,7 @@ class BluetoothPrinterService {
     final denied =
         statuses.entries.where((e) => !e.value.isGranted).toList();
     if (denied.isNotEmpty) {
-      throw Exception(
-        'Izin Bluetooth tidak diberikan. Aktifkan di Pengaturan > Aplikasi > '
-        'Printer Bar > Izin, lalu coba lagi.',
-      );
+      throw const BluetoothPermissionDenied();
     }
   }
 
@@ -173,11 +172,7 @@ class BluetoothPrinterService {
     final ok =
         await PrintBluetoothThermal.connect(macPrinterAddress: device.mac);
     if (!ok) {
-      throw Exception(
-        'Gagal terhubung ke "${device.name}". Pastikan printer menyala, '
-        'berada di dekat HP, dan tidak dipakai aplikasi lain. Jika diminta, '
-        'setujui pairing di HP.',
-      );
+      throw BluetoothConnectFailed(device.name);
     }
   }
 
@@ -201,10 +196,7 @@ class BluetoothPrinterService {
   Future<void> writeBytes(List<int> bytes) async {
     final ok = await PrintBluetoothThermal.writeBytes(bytes);
     if (!ok) {
-      throw Exception(
-        'Gagal mengirim ${bytes.length} byte ke printer. '
-        'Periksa koneksi lalu coba lagi.',
-      );
+      throw BluetoothWriteFailed(bytes.length);
     }
   }
 }

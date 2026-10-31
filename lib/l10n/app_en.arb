@@ -1,0 +1,270 @@
+{
+  "@@locale": "en",
+  "tabPrint": "Print",
+  "tabSettings": "Settings",
+  "appVersion": "Printer Bar v1.2.0",
+  "privacyTitle": "Privacy Policy",
+  "privacySubtitle": "How this app handles your data",
+  "privacyOpenFailed": "Couldn't open the privacy policy",
+  "paperTitle": "Paper Size",
+  "printWidth": "Print width: {dots} dots @ 203 dpi",
+  "@printWidth": {
+    "placeholders": {
+      "dots": {
+        "type": "int"
+      }
+    }
+  },
+  "sourceTitle": "Receipt Source",
+  "sourceHint": "You can also open it via Share > Printer Bar from another app.",
+  "pickPdf": "Pick PDF",
+  "pickImage": "Pick Image",
+  "singleImage": "1 image",
+  "pageCount": "{count} pages",
+  "@pageCount": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "previewCropTitle": "Preview & Crop",
+  "reset": "Reset",
+  "cropHint": "Drag corners/edges to resize • drag the center to move",
+  "detectingBarcode": "Detecting barcode...",
+  "barcodeNotFoundPage": "Barcode not found on page {page}",
+  "@barcodeNotFoundPage": {
+    "placeholders": {
+      "page": {
+        "type": "int"
+      }
+    }
+  },
+  "barcodeOutsideCrop": "Barcode is outside the crop area on page {page}",
+  "@barcodeOutsideCrop": {
+    "placeholders": {
+      "page": {
+        "type": "int"
+      }
+    }
+  },
+  "barcodeFoundRewritten": "Barcode found ✓\n{value} (redrawn sharp)",
+  "@barcodeFoundRewritten": {
+    "placeholders": {
+      "value": {
+        "type": "String"
+      }
+    }
+  },
+  "barcodeFoundImageCrop": "Barcode found ✓\nValue unreadable — using image crop",
+  "printPreviewTitle": "Print Preview",
+  "printPreviewSubtitle": "Exactly as it will come out of the printer — page {page}.",
+  "@printPreviewSubtitle": {
+    "placeholders": {
+      "page": {
+        "type": "int"
+      }
+    }
+  },
+  "printPreviewUnavailable": "Preview not available yet (e.g. barcode not detected).",
+  "printOptionsTitle": "Print Options",
+  "modeOriginal": "Original",
+  "modeOriginalTooltip": "Original print: the receipt as-is, full paper width",
+  "modeBarcode": "Barcode",
+  "modeBarcodeTooltip": "Enlarged barcode: the largest barcode is reprinted full-width below the receipt",
+  "orientationVertical": "Vertical",
+  "orientationHorizontal": "Horizontal",
+  "orientationVerticalTooltip": "Vertical barcode (rotated 90°) — tap for horizontal",
+  "orientationHorizontalTooltip": "Horizontal barcode — tap for vertical",
+  "dither": "Dither",
+  "ditherTooltip": "Dithering: photos and gradients print smoother",
+  "barcodeHeight": "Barcode height:",
+  "bluetoothTitle": "Bluetooth Printer",
+  "connected": "Connected",
+  "bluetoothHint": "Already-paired devices appear under \"Saved\". Turn the printer on, then scan to find nearby new devices.",
+  "stopScanning": "Stop ({count})",
+  "@stopScanning": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "scanDevices": "Scan Devices",
+  "scanningHint": "Scanning for nearby devices... tap \"Stop\" once your printer appears.",
+  "disconnect": "Disconnect",
+  "savedDevices": "Saved devices",
+  "availableDevices": "Available devices",
+  "printButton": "Print",
+  "printingButton": "Printing...",
+  "progressOpeningPicker": "Opening file picker...",
+  "progressRenderingPdf": "Rendering PDF...",
+  "progressLoadingImage": "Loading image...",
+  "progressRotatingImage": "Rotating image...",
+  "progressPreparing": "Preparing...",
+  "progressPrintingPage": "Printing page {page}/{total}...",
+  "@progressPrintingPage": {
+    "placeholders": {
+      "page": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "shareFailed": "Failed to receive share: {error}",
+  "@shareFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "sharedPdfUnreadable": "The shared PDF file couldn't be read.",
+  "pickerTimeout": "The file picker didn't respond within 60 seconds.",
+  "pickerUnresponsivePdf": "The file picker didn't respond. Try again, or open the PDF from File Manager and Share > Printer Bar.",
+  "pickerUnresponsiveShort": "The file picker didn't respond. Try again.",
+  "openPickerFailed": "Failed to open the file picker: {error}",
+  "@openPickerFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "pdfRenderTimeout": "PDF rendering took too long (90 seconds). The file may be corrupt or unsupported.",
+  "renderPdfFailed": "Failed to render PDF: {error}",
+  "@renderPdfFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "loadPdfFailed": "Failed to load PDF: {error}",
+  "@loadPdfFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "imageUnreadable": "The image file couldn't be read.",
+  "invalidImage": "Not a valid image file.",
+  "loadImageFailed": "Failed to load image: {error}",
+  "@loadImageFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "rotateFailed": "Failed to rotate image: {error}",
+  "@rotateFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "detectBarcodeFailed": "Barcode detection failed on page {page}: {error}",
+  "@detectBarcodeFailed": {
+    "placeholders": {
+      "page": {
+        "type": "int"
+      },
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "bluetoothOff": "Phone Bluetooth is off. Turn Bluetooth on first, then scan again.",
+  "readBondedFailed": "Failed to read saved devices: {error}",
+  "@readBondedFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "scanFailed": "Scan failed: {error}",
+  "@scanFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "scanStartFailed": "Couldn't start Bluetooth scanning. Make sure Bluetooth is on.",
+  "noDevicesFound": "No devices found. Make sure the printer is on and near your phone.",
+  "connectedTo": "Connected to \"{name}\"",
+  "@connectedTo": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "disconnected": "Printer disconnected",
+  "barcodeNotFoundThrow": "Barcode not found on page {page}.",
+  "@barcodeNotFoundThrow": {
+    "placeholders": {
+      "page": {
+        "type": "int"
+      }
+    }
+  },
+  "barcodeOutsideCropThrow": "Barcode is outside the crop area on page {page}.",
+  "@barcodeOutsideCropThrow": {
+    "placeholders": {
+      "page": {
+        "type": "int"
+      }
+    }
+  },
+  "printerDisconnected": "Printer disconnected. Reconnect first.",
+  "printSuccess": "Printed successfully 🎉",
+  "printFailed": "Print failed: {error}",
+  "@printFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "btPermissionDenied": "Bluetooth permission not granted. Enable it in Settings > Apps > Printer Bar > Permissions, then try again.",
+  "btConnectFailed": "Couldn't connect to \"{name}\". Make sure the printer is on, near your phone, and not in use by another app. If prompted, approve pairing on your phone.",
+  "@btConnectFailed": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "btWriteFailed": "Failed to send {count} bytes to the printer. Check the connection and try again.",
+  "@btWriteFailed": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "pdfUnreadable": "The PDF couldn't be read from your phone's storage. Try picking it again from File Manager.",
+  "pdfNotFound": "PDF file not found at: {path}",
+  "@pdfNotFound": {
+    "placeholders": {
+      "path": {
+        "type": "String"
+      }
+    }
+  },
+  "pdfRenderPageFailed": "Failed to render page {page}",
+  "@pdfRenderPageFailed": {
+    "placeholders": {
+      "page": {
+        "type": "int"
+      }
+    }
+  }
+}
