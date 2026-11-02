@@ -2,7 +2,7 @@
   "@@locale": "id",
   "tabPrint": "Cetak",
   "tabSettings": "Pengaturan",
-  "appVersion": "Printer Bar v1.2.0",
+  "appVersion": "Printer Bar v1.3.0",
   "privacyTitle": "Kebijakan Privasi",
   "privacySubtitle": "Bagaimana aplikasi ini menangani data Anda",
   "privacyOpenFailed": "Tidak bisa membuka kebijakan privasi",
@@ -266,5 +266,17 @@
         "type": "int"
       }
     }
-  }
+  },
+  "tabFreeText": "Teks Bebas",
+  "freeTextHint": "Tulis teks yang ingin dicetak…",
+  "freeTextBold": "Tebal",
+  "freeTextItalic": "Miring",
+  "freeTextUnderline": "Garis bawah",
+  "freeTextAlignLeft": "Rata kiri",
+  "freeTextAlignCenter": "Rata tengah",
+  "freeTextAlignRight": "Rata kanan",
+  "freeTextFontSize": "Ukuran huruf",
+  "freeTextPrintButton": "Cetak Teks",
+  "freeTextClear": "Bersihkan",
+  "freeTextEmpty": "Teks masih kosong"
 }

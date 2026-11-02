@@ -15,7 +15,7 @@ class AppLocalizationsId extends AppLocalizations {
   String get tabSettings => 'Pengaturan';
 
   @override
-  String get appVersion => 'Printer Bar v1.2.0';
+  String get appVersion => 'Printer Bar v1.3.0';
 
   @override
   String get privacyTitle => 'Kebijakan Privasi';
@@ -335,4 +335,40 @@ class AppLocalizationsId extends AppLocalizations {
   String pdfRenderPageFailed(int page) {
     return 'Gagal me-render halaman $page';
   }
+
+  @override
+  String get tabFreeText => 'Teks Bebas';
+
+  @override
+  String get freeTextHint => 'Tulis teks yang ingin dicetak…';
+
+  @override
+  String get freeTextBold => 'Tebal';
+
+  @override
+  String get freeTextItalic => 'Miring';
+
+  @override
+  String get freeTextUnderline => 'Garis bawah';
+
+  @override
+  String get freeTextAlignLeft => 'Rata kiri';
+
+  @override
+  String get freeTextAlignCenter => 'Rata tengah';
+
+  @override
+  String get freeTextAlignRight => 'Rata kanan';
+
+  @override
+  String get freeTextFontSize => 'Ukuran huruf';
+
+  @override
+  String get freeTextPrintButton => 'Cetak Teks';
+
+  @override
+  String get freeTextClear => 'Bersihkan';
+
+  @override
+  String get freeTextEmpty => 'Teks masih kosong';
 }

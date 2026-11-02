@@ -15,7 +15,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get tabSettings => 'Settings';
 
   @override
-  String get appVersion => 'Printer Bar v1.2.0';
+  String get appVersion => 'Printer Bar v1.3.0';
 
   @override
   String get privacyTitle => 'Privacy Policy';
@@ -334,4 +334,40 @@ class AppLocalizationsEn extends AppLocalizations {
   String pdfRenderPageFailed(int page) {
     return 'Failed to render page $page';
   }
+
+  @override
+  String get tabFreeText => 'Free Text';
+
+  @override
+  String get freeTextHint => 'Type the text you want to print…';
+
+  @override
+  String get freeTextBold => 'Bold';
+
+  @override
+  String get freeTextItalic => 'Italic';
+
+  @override
+  String get freeTextUnderline => 'Underline';
+
+  @override
+  String get freeTextAlignLeft => 'Align left';
+
+  @override
+  String get freeTextAlignCenter => 'Align center';
+
+  @override
+  String get freeTextAlignRight => 'Align right';
+
+  @override
+  String get freeTextFontSize => 'Font size';
+
+  @override
+  String get freeTextPrintButton => 'Print Text';
+
+  @override
+  String get freeTextClear => 'Clear';
+
+  @override
+  String get freeTextEmpty => 'Text is still empty';
 }

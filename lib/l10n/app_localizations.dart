@@ -113,7 +113,7 @@ abstract class AppLocalizations {
   /// No description provided for @appVersion.
   ///
   /// In en, this message translates to:
-  /// **'Printer Bar v1.2.0'**
+  /// **'Printer Bar v1.3.0'**
   String get appVersion;
 
   /// No description provided for @privacyTitle.
@@ -613,6 +613,78 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Failed to render page {page}'**
   String pdfRenderPageFailed(int page);
+
+  /// No description provided for @tabFreeText.
+  ///
+  /// In en, this message translates to:
+  /// **'Free Text'**
+  String get tabFreeText;
+
+  /// No description provided for @freeTextHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Type the text you want to print…'**
+  String get freeTextHint;
+
+  /// No description provided for @freeTextBold.
+  ///
+  /// In en, this message translates to:
+  /// **'Bold'**
+  String get freeTextBold;
+
+  /// No description provided for @freeTextItalic.
+  ///
+  /// In en, this message translates to:
+  /// **'Italic'**
+  String get freeTextItalic;
+
+  /// No description provided for @freeTextUnderline.
+  ///
+  /// In en, this message translates to:
+  /// **'Underline'**
+  String get freeTextUnderline;
+
+  /// No description provided for @freeTextAlignLeft.
+  ///
+  /// In en, this message translates to:
+  /// **'Align left'**
+  String get freeTextAlignLeft;
+
+  /// No description provided for @freeTextAlignCenter.
+  ///
+  /// In en, this message translates to:
+  /// **'Align center'**
+  String get freeTextAlignCenter;
+
+  /// No description provided for @freeTextAlignRight.
+  ///
+  /// In en, this message translates to:
+  /// **'Align right'**
+  String get freeTextAlignRight;
+
+  /// No description provided for @freeTextFontSize.
+  ///
+  /// In en, this message translates to:
+  /// **'Font size'**
+  String get freeTextFontSize;
+
+  /// No description provided for @freeTextPrintButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Print Text'**
+  String get freeTextPrintButton;
+
+  /// No description provided for @freeTextClear.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear'**
+  String get freeTextClear;
+
+  /// No description provided for @freeTextEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'Text is still empty'**
+  String get freeTextEmpty;
 }
 
 class _AppLocalizationsDelegate

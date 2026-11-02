@@ -17,6 +17,7 @@ import '../services/image_pipeline.dart';
 import '../services/pdf_service.dart';
 import '../widgets/crop_overlay.dart';
 import '../widgets/device_tile.dart';
+import '../widgets/free_text_tab.dart';
 import '../l10n/app_localizations.dart';
 import '../services/app_errors.dart';
 import '../widgets/print_preview_image.dart';
@@ -62,7 +63,7 @@ class _HomeScreenState extends State<HomeScreen>
   final _bt = BluetoothPrinterService();
   StreamSubscription<List<SharedMediaFile>>? _intentSub;
 
-  /// Tab "Cetak" (0) vs "Pengaturan" (1).
+  /// Tab "Cetak" (0), "Pengaturan" (1), "Teks Bebas" (2).
   late final TabController _tabController;
 
   PaperSize _paper = PaperSize.mm58;
@@ -143,7 +144,7 @@ class _HomeScreenState extends State<HomeScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
     _printScrollController = ScrollController();
     _settingsScrollController = ScrollController();
     // PDF yang di-share dari aplikasi lain saat aplikasi sudah jalan.
@@ -883,6 +884,7 @@ class _HomeScreenState extends State<HomeScreen>
         children: [
           _printTab(),
           _settingsTab(),
+          FreeTextTab(paperDots: _paper.dots, bt: _bt),
         ],
       ),
       bottomNavigationBar: Material(
@@ -896,6 +898,7 @@ class _HomeScreenState extends State<HomeScreen>
           tabs: [
             Tab(icon: const Icon(Icons.print), text: l.tabPrint),
             Tab(icon: const Icon(Icons.settings), text: l.tabSettings),
+            Tab(icon: const Icon(Icons.text_fields), text: l.tabFreeText),
           ],
         ),
       ),

@@ -2,7 +2,7 @@
   "@@locale": "en",
   "tabPrint": "Print",
   "tabSettings": "Settings",
-  "appVersion": "Printer Bar v1.2.0",
+  "appVersion": "Printer Bar v1.3.0",
   "privacyTitle": "Privacy Policy",
   "privacySubtitle": "How this app handles your data",
   "privacyOpenFailed": "Couldn't open the privacy policy",
@@ -266,5 +266,17 @@
         "type": "int"
       }
     }
-  }
+  },
+  "tabFreeText": "Free Text",
+  "freeTextHint": "Type the text you want to print…",
+  "freeTextBold": "Bold",
+  "freeTextItalic": "Italic",
+  "freeTextUnderline": "Underline",
+  "freeTextAlignLeft": "Align left",
+  "freeTextAlignCenter": "Align center",
+  "freeTextAlignRight": "Align right",
+  "freeTextFontSize": "Font size",
+  "freeTextPrintButton": "Print Text",
+  "freeTextClear": "Clear",
+  "freeTextEmpty": "Text is still empty"
 }
