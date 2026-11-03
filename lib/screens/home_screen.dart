@@ -889,7 +889,14 @@ class _HomeScreenState extends State<HomeScreen>
       ),
       bottomNavigationBar: Material(
         color: Theme.of(context).colorScheme.surface,
-        child: TabBar(
+        // SafeArea WAJIB: TabBar mentah tidak menambah padding sistem sendiri,
+        // sehingga di device dengan gesture bar / tombol navigasi 3 tombol,
+        // label tab tertutup area navigasi sistem. SafeArea memakai inset
+        // sistem sebenarnya (viewPadding.bottom), bukan nilai hardcode,
+        // dan nol di device tanpa inset bawah.
+        child: SafeArea(
+          top: false,
+          child: TabBar(
           controller: _tabController,
           labelColor: Theme.of(context).colorScheme.primary,
           unselectedLabelColor:
@@ -900,6 +907,7 @@ class _HomeScreenState extends State<HomeScreen>
             Tab(icon: const Icon(Icons.settings), text: l.tabSettings),
             Tab(icon: const Icon(Icons.text_fields), text: l.tabFreeText),
           ],
+          ),
         ),
       ),
     );
